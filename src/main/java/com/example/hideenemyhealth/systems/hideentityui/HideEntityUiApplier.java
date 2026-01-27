@@ -54,13 +54,9 @@ public final class HideEntityUiApplier {
 
         final long key = EntityUiBaselineCache.entityKey(entityRef);
 
-        // If disabled globally -> restore baseline (if any) and exit.
+        // If disabled globally -> restore baseline (if any) and drop cached baseline to avoid growth.
         if (!cfg.enabled) {
-            final int[] baseline = EntityUiBaselineCache.getBaseline(key);
-            if (baseline != null && !Arrays.equals(currentIds, baseline)) {
-                UiComponentFieldAccessor.setComponentIds(list, baseline.clone());
-                putComponent(entityRef, store, buffer, list);
-            }
+            restoreBaselineIfPresent(key, currentIds, entityRef, store, buffer, list);
             return;
         }
 
@@ -76,6 +72,7 @@ public final class HideEntityUiApplier {
                 isNpc = store.getComponent(entityRef, NPCEntity.getComponentType()) != null;
             }
         } catch (Throwable t) {
+            // If the store throws for any reason, skip this entity.
             return;
         }
 
@@ -89,21 +86,28 @@ public final class HideEntityUiApplier {
         // If nothing should be hidden, we only restore if we have a baseline and the entity was modified before.
         // This avoids creating baseline entries for entities when the feature is effectively off for them.
         if (hideNone) {
-            final int[] baseline = EntityUiBaselineCache.getBaseline(key);
-            if (baseline != null && !Arrays.equals(currentIds, baseline)) {
-                UiComponentFieldAccessor.setComponentIds(list, baseline.clone());
-                putComponent(entityRef, store, buffer, list);
-            }
+            restoreBaselineIfPresent(key, currentIds, entityRef, store, buffer, list);
             return;
         }
 
         // Baseline must reflect the entity's original UI list (before we modify it).
-        final int[] baseline = getOrBuildBaseline(key, currentIds);
+        // We cache it only if we actually need to hide something for this entity.
+        final int[] existingBaseline = EntityUiBaselineCache.getBaseline(key);
+        final boolean baselineWasMissing = (existingBaseline == null);
+        final int[] baseline = (existingBaseline != null)
+                ? existingBaseline
+                : EntityUiBaselineCache.putBaselineIfAbsent(key, buildBaselineFromCurrent(currentIds));
 
         if (!UiComponentCache.ensureCache()) return;
 
         final int[] desired = computeDesiredIds(baseline, settings);
-        if (Arrays.equals(currentIds, desired)) return;
+        if (Arrays.equals(currentIds, desired)) {
+            // If we created a baseline but ended up not changing anything, drop it to prevent cache growth.
+            if (baselineWasMissing) {
+                EntityUiBaselineCache.remove(key);
+            }
+            return;
+        }
 
         UiComponentFieldAccessor.setComponentIds(list, desired);
         putComponent(entityRef, store, buffer, list);
@@ -122,6 +126,51 @@ public final class HideEntityUiApplier {
             buffer.putComponent(entityRef, UIComponentList.getComponentType(), list);
         } else {
             store.putComponent(entityRef, UIComponentList.getComponentType(), list);
+        }
+    }
+
+    /**
+     * Restore an entity's UI list from baseline (if present) and then drop the cached baseline.
+     *
+     * <p>This is used when:
+     * <ul>
+     *   <li>the plugin is disabled globally</li>
+     *   <li>the relevant target settings specify "hide nothing"</li>
+     * </ul>
+     *
+     * <p>We remove the baseline entry after restoring to avoid unbounded cache growth.
+     * If the entity gets modified again later, a fresh baseline snapshot can be rebuilt from its current state.</p>
+     *
+     * @param key        entity key (see {@link EntityUiBaselineCache#entityKey(Ref)})
+     * @param currentIds current UI component IDs currently present on the entity
+     * @param entityRef  entity reference
+     * @param store      entity store
+     * @param buffer     optional command buffer (ECS callback)
+     * @param list       UI component list component
+     */
+    private static void restoreBaselineIfPresent(final long key,
+                                                 @Nonnull final int[] currentIds,
+                                                 @Nonnull final Ref<EntityStore> entityRef,
+                                                 @Nonnull final Store<EntityStore> store,
+                                                 @Nullable final CommandBuffer<EntityStore> buffer,
+                                                 @Nonnull final UIComponentList list) {
+        final int[] baseline = EntityUiBaselineCache.getBaseline(key);
+        if (baseline == null) return;
+
+        boolean restored = Arrays.equals(currentIds, baseline);
+        if (!restored) {
+            try {
+                UiComponentFieldAccessor.setComponentIds(list, baseline.clone());
+                putComponent(entityRef, store, buffer, list);
+                restored = true;
+            } catch (Throwable ignored) {
+                restored = false;
+            }
+        }
+
+        // Only drop baseline if we believe the entity is now restored.
+        if (restored) {
+            EntityUiBaselineCache.remove(key);
         }
     }
 
@@ -149,19 +198,6 @@ public final class HideEntityUiApplier {
 
         // Always return a new array (do not leak baseline array into entity component).
         return (count == out.length) ? baselineIds.clone() : Arrays.copyOf(out, count);
-    }
-
-    /**
-     * Get existing baseline if present; otherwise build and store a baseline snapshot.
-     */
-    @Nonnull
-    private static int[] getOrBuildBaseline(final long key, @Nonnull final int[] currentIds) {
-        final int[] existing = EntityUiBaselineCache.getBaseline(key);
-        if (existing != null) {
-            return existing;
-        }
-        final int[] baseline = buildBaselineFromCurrent(currentIds);
-        return EntityUiBaselineCache.putBaselineIfAbsent(key, baseline);
     }
 
     /**

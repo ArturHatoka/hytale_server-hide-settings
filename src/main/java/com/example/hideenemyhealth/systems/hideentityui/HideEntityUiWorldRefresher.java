@@ -13,6 +13,8 @@ import javax.annotation.Nullable;
 import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 
@@ -26,6 +28,17 @@ import java.util.logging.Level;
 public final class HideEntityUiWorldRefresher {
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
+
+
+    // Debounced refresh scheduler:
+    // UI actions can trigger multiple refresh calls in quick succession. We coalesce them so we don't
+    // repeatedly iterate worlds and enqueue redundant world.execute() tasks.
+    private static final int REFRESH_PLAYERS_MASK = 1;
+    private static final int REFRESH_NPCS_MASK = 2;
+
+    private static final AtomicInteger PENDING_REFRESH_MASK = new AtomicInteger(0);
+    private static final AtomicBoolean REFRESH_LOOP_RUNNING = new AtomicBoolean(false);
+
 
     // Reflection caches: we keep them to tolerate minor API differences between server builds.
     private static final ConcurrentHashMap<Class<?>, Method> EXECUTE_METHOD_CACHE = new ConcurrentHashMap<>();
@@ -43,24 +56,76 @@ public final class HideEntityUiWorldRefresher {
 
     /**
      * Refresh players and NPCs in all currently loaded worlds.
+     *
+     * <p>This call is debounced and will coalesce with other refresh requests triggered in the same tick.
+     * It reduces redundant world iterations when the admin UI toggles multiple settings quickly.</p>
      */
     public static void refreshLoadedEntities() {
-        forEachWorldOnWorldThread(HideEntityUiWorldRefresher::refreshWorld);
+        requestRefresh(REFRESH_PLAYERS_MASK | REFRESH_NPCS_MASK);
     }
 
     /**
      * Refresh players only in all currently loaded worlds.
+     *
+     * <p>This call is debounced and will coalesce with other refresh requests.</p>
      */
     public static void refreshLoadedPlayers() {
-        forEachWorldOnWorldThread(HideEntityUiWorldRefresher::refreshPlayers);
+        requestRefresh(REFRESH_PLAYERS_MASK);
     }
 
     /**
      * Refresh NPCs only in all currently loaded worlds.
+     *
+     * <p>This call is debounced and will coalesce with other refresh requests.</p>
      */
     public static void refreshLoadedNpcs() {
-        forEachWorldOnWorldThread(HideEntityUiWorldRefresher::refreshNpcs);
+        requestRefresh(REFRESH_NPCS_MASK);
     }
+
+    /**
+     * Request a refresh pass. Multiple requests are coalesced into a single world iteration.
+     *
+     * <p>Implementation detail: this uses an in-memory bitmask and a single-thread "drain loop".
+     * Calls made while a refresh is already running simply OR their bits into the pending mask.</p>
+     *
+     * @param mask bitmask of refresh targets ({@link #REFRESH_PLAYERS_MASK}, {@link #REFRESH_NPCS_MASK})
+     */
+    private static void requestRefresh(final int mask) {
+        if (mask != 0) {
+            PENDING_REFRESH_MASK.getAndUpdate(prev -> prev | mask);
+        }
+
+        // If a refresh loop is already running, it will pick up our pending mask.
+        if (!REFRESH_LOOP_RUNNING.compareAndSet(false, true)) {
+            return;
+        }
+
+        try {
+            while (true) {
+                final int pendingMask = PENDING_REFRESH_MASK.getAndSet(0);
+                if (pendingMask == 0) break;
+
+                final boolean players = (pendingMask & REFRESH_PLAYERS_MASK) != 0;
+                final boolean npcs = (pendingMask & REFRESH_NPCS_MASK) != 0;
+
+                if (players && npcs) {
+                    forEachWorldOnWorldThread(HideEntityUiWorldRefresher::refreshWorld);
+                } else if (players) {
+                    forEachWorldOnWorldThread(HideEntityUiWorldRefresher::refreshPlayers);
+                } else if (npcs) {
+                    forEachWorldOnWorldThread(HideEntityUiWorldRefresher::refreshNpcs);
+                }
+            }
+        } finally {
+            REFRESH_LOOP_RUNNING.set(false);
+
+            // Race window: if another thread requested a refresh after we stopped, run once more.
+            if (PENDING_REFRESH_MASK.get() != 0) {
+                requestRefresh(0);
+            }
+        }
+    }
+
 
     /**
      * Iterate all loaded worlds and run a task on each world thread.

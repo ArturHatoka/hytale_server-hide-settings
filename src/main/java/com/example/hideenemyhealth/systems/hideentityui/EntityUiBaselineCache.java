@@ -65,11 +65,21 @@ public final class EntityUiBaselineCache {
         return BASELINE_COMPONENT_IDS.get(key);
     }
 
+
+    /**
+     * Remove baseline entry for an entity key.
+     *
+     * @param key entity key (see {@link #entityKey(Ref)})
+     */
+    public static void remove(final long key) {
+        BASELINE_COMPONENT_IDS.remove(key);
+    }
+
     /**
      * Remove baseline entry for a ref.
      */
     public static void remove(@Nonnull final Ref<EntityStore> ref) {
-        BASELINE_COMPONENT_IDS.remove(entityKey(ref));
+        remove(entityKey(ref));
     }
 
     /**
