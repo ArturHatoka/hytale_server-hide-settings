@@ -13,11 +13,30 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.Arrays;
 
+/**
+ * Applies the HideEnemyHealth configuration to an entity by rewriting its {@link UIComponentList}.
+ *
+ * <p>Implementation rules:
+ * <ul>
+ *   <li>We take a baseline snapshot the first time we touch an entity, and only ever remove IDs from that baseline.</li>
+ *   <li>"Unhide" restores the exact baseline (no extra UI components are introduced).</li>
+ *   <li>All operations are safe against invalid/stale refs (we check {@link Ref#isValid()}).</li>
+ * </ul>
+ * </p>
+ */
 public final class HideEntityUiApplier {
 
     private HideEntityUiApplier() {
     }
 
+    /**
+     * Apply current config to the given entity ref.
+     *
+     * @param entityRef entity reference (must be valid)
+     * @param store     entity store
+     * @param buffer    command buffer if called from ECS callback (preferred), otherwise null
+     * @param forceNpc  optional hint: TRUE = treat as NPC, FALSE = treat as player, null = auto-detect
+     */
     public static void applyForRef(@Nonnull final Ref<EntityStore> entityRef,
                                    @Nonnull final Store<EntityStore> store,
                                    @Nullable final CommandBuffer<EntityStore> buffer,
@@ -65,17 +84,21 @@ public final class HideEntityUiApplier {
 
         if (settings == null) return;
 
-        // Baseline must reflect the entity's original UI list (before we modify it).
-        final int[] baseline = getOrBuildBaseline(key, currentIds);
+        final boolean hideNone = !settings.hideDamageNumbers && !settings.hideHealthBar;
 
-        // Fast-path: if nothing should be hidden, restore baseline (no need for ID cache).
-        if (!settings.hideDamageNumbers && !settings.hideHealthBar) {
-            if (!Arrays.equals(currentIds, baseline)) {
+        // If nothing should be hidden, we only restore if we have a baseline and the entity was modified before.
+        // This avoids creating baseline entries for entities when the feature is effectively off for them.
+        if (hideNone) {
+            final int[] baseline = EntityUiBaselineCache.getBaseline(key);
+            if (baseline != null && !Arrays.equals(currentIds, baseline)) {
                 UiComponentFieldAccessor.setComponentIds(list, baseline.clone());
                 putComponent(entityRef, store, buffer, list);
             }
             return;
         }
+
+        // Baseline must reflect the entity's original UI list (before we modify it).
+        final int[] baseline = getOrBuildBaseline(key, currentIds);
 
         if (!UiComponentCache.ensureCache()) return;
 
@@ -86,6 +109,11 @@ public final class HideEntityUiApplier {
         putComponent(entityRef, store, buffer, list);
     }
 
+    /**
+     * Write the updated UIComponentList back to the ECS store.
+     *
+     * <p>If we're inside an ECS callback, we must use {@link CommandBuffer}.</p>
+     */
     private static void putComponent(@Nonnull final Ref<EntityStore> entityRef,
                                      @Nonnull final Store<EntityStore> store,
                                      @Nullable final CommandBuffer<EntityStore> buffer,
@@ -100,9 +128,10 @@ public final class HideEntityUiApplier {
     /**
      * Compute final componentIds based on baseline (original list) and current hide settings.
      *
-     * Important: We only *remove* IDs from the baseline. We never add IDs that were not present
-     * originally, so "unhide" restores exactly what the entity had before the plugin touched it.
+     * <p>Important: We only <b>remove</b> IDs from the baseline. We never add IDs that were not present
+     * originally, so "unhide" restores exactly what the entity had before the plugin touched it.</p>
      */
+    @Nonnull
     private static int[] computeDesiredIds(@Nonnull final int[] baselineIds,
                                           @Nonnull final HideEnemyHealthConfig.TargetSettings settings) {
 
@@ -122,6 +151,10 @@ public final class HideEntityUiApplier {
         return (count == out.length) ? baselineIds.clone() : Arrays.copyOf(out, count);
     }
 
+    /**
+     * Get existing baseline if present; otherwise build and store a baseline snapshot.
+     */
+    @Nonnull
     private static int[] getOrBuildBaseline(final long key, @Nonnull final int[] currentIds) {
         final int[] existing = EntityUiBaselineCache.getBaseline(key);
         if (existing != null) {
@@ -134,6 +167,7 @@ public final class HideEntityUiApplier {
     /**
      * Baseline must be a pure snapshot of the current list (deduped, preserving order).
      */
+    @Nonnull
     private static int[] buildBaselineFromCurrent(@Nonnull final int[] currentIds) {
         if (currentIds.length <= 1) return currentIds.clone();
 

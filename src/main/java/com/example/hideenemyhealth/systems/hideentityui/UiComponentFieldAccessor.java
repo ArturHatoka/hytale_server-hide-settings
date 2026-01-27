@@ -8,6 +8,13 @@ import javax.annotation.Nullable;
 import java.lang.reflect.Field;
 import java.util.logging.Level;
 
+/**
+ * Reflection helper around {@link UIComponentList}.
+ *
+ * <p>At the time of writing, the component IDs are stored in a private field named {@code componentIds}.
+ * If the server API changes, this accessor returns null and the plugin will fail closed (do nothing) instead
+ * of crashing the server.</p>
+ */
 public final class UiComponentFieldAccessor {
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
@@ -29,6 +36,12 @@ public final class UiComponentFieldAccessor {
     private UiComponentFieldAccessor() {
     }
 
+    /**
+     * Read the raw {@code componentIds} array from {@link UIComponentList}.
+     *
+     * @param list UI component list
+     * @return internal array instance, or null if reflection is unavailable
+     */
     @Nullable
     public static int[] getComponentIds(@Nonnull final UIComponentList list) {
         try {
@@ -39,6 +52,12 @@ public final class UiComponentFieldAccessor {
         }
     }
 
+    /**
+     * Replace the raw {@code componentIds} array inside {@link UIComponentList}.
+     *
+     * @param list UI component list
+     * @param ids  new IDs array
+     */
     public static void setComponentIds(@Nonnull final UIComponentList list, @Nonnull final int[] ids) {
         try {
             if (COMPONENT_IDS_FIELD == null) return;

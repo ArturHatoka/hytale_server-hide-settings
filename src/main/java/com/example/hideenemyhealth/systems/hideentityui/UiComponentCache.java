@@ -11,6 +11,17 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.logging.Level;
 
+/**
+ * Caches entity UI component IDs for quick classification.
+ *
+ * <p>We scan {@link EntityUIComponent} assets and build two ID sets:
+ * <ul>
+ *   <li>{@code CombatText} components (damage/heal numbers)</li>
+ *   <li>{@code EntityStat(Health)} components (HP bar)</li>
+ * </ul>
+ *
+ * <p>Membership checks are done via boolean arrays to avoid boxing and Set.contains overhead.</p>
+ */
 public final class UiComponentCache {
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
@@ -27,6 +38,9 @@ public final class UiComponentCache {
     private UiComponentCache() {
     }
 
+    /**
+     * Drop cached data so it will be rebuilt on next {@link #ensureCache()}.
+     */
     public static void resetCache() {
         CACHE_READY = false;
         COMBAT_TEXT_IDS = Set.of();
@@ -35,10 +49,16 @@ public final class UiComponentCache {
         HEALTH_STAT_FLAGS = new boolean[0];
     }
 
+    /**
+     * Ensure the cache is built.
+     *
+     * @return true if cache is ready; false if assets could not be read
+     */
     public static boolean ensureCache() {
         if (CACHE_READY) return true;
 
         try {
+            // Ensure stat indices are initialized.
             DefaultEntityStatTypes.update();
             final int healthIndex = DefaultEntityStatTypes.getHealth();
 
@@ -89,6 +109,9 @@ public final class UiComponentCache {
         }
     }
 
+    /**
+     * Fast membership test: is the given UI component ID a CombatText component.
+     */
     public static boolean isCombatTextId(final int id) {
         final boolean[] flags = COMBAT_TEXT_FLAGS;
         if (id < 0 || id >= flags.length) {
@@ -99,6 +122,9 @@ public final class UiComponentCache {
         return flags[id];
     }
 
+    /**
+     * Fast membership test: is the given UI component ID a Health EntityStat component.
+     */
     public static boolean isHealthStatId(final int id) {
         final boolean[] flags = HEALTH_STAT_FLAGS;
         if (id < 0 || id >= flags.length) {
@@ -108,12 +134,16 @@ public final class UiComponentCache {
         return flags[id];
     }
 
-    // Kept for compatibility / debugging.
+    /**
+     * @return immutable set of CombatText IDs (debugging/diagnostics)
+     */
     public static Set<Integer> getCombatTextIds() {
         return COMBAT_TEXT_IDS;
     }
 
-    // Kept for compatibility / debugging.
+    /**
+     * @return immutable set of Health EntityStat IDs (debugging/diagnostics)
+     */
     public static Set<Integer> getHealthStatIds() {
         return HEALTH_STAT_IDS;
     }

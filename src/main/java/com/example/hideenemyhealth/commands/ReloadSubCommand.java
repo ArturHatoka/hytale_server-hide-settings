@@ -8,20 +8,29 @@ import com.hypixel.hytale.server.core.command.system.basecommands.CommandBase;
 import org.checkerframework.checker.nullness.compatqual.NonNullDecl;
 
 /**
- * /hid reload - Reload plugin configuration (admin)
+ * /hid reload - reload config from disk and re-apply to loaded entities (admin).
  */
 public class ReloadSubCommand extends CommandBase {
 
+    /**
+     * Create reload subcommand.
+     */
     public ReloadSubCommand() {
         super("reload", "Reload plugin configuration (admin)");
         this.setPermissionGroup(null);
     }
 
+    /**
+     * No auto-generated permission node.
+     */
     @Override
     protected boolean canGeneratePermission() {
         return false;
     }
 
+    /**
+     * Execute reload (runs synchronously).
+     */
     @Override
     protected void executeSync(@NonNullDecl CommandContext commandContext) {
         if (!commandContext.sender().hasPermission(HideEnemyHealthPlugin.ADMIN_PERMISSION)) {

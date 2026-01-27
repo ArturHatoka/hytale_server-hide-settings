@@ -15,24 +15,36 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import javax.annotation.Nonnull;
 
 /**
- * /hid ui - Open the plugin dashboard UI (admins only)
- *
- * Extends AbstractPlayerCommand to ensure proper thread handling
- * when opening custom UI pages.
+ * /hid ui - open the plugin dashboard UI (admins only).
  */
 public class UISubCommand extends AbstractPlayerCommand {
 
+    /**
+     * Create the subcommand.
+     */
     public UISubCommand() {
         super("ui", "Open the plugin dashboard (admin)");
         this.addAliases(new String[]{"dashboard", "gui"});
         this.setPermissionGroup(null);
     }
 
+    /**
+     * Subcommand handles its own permission check.
+     */
     @Override
     protected boolean canGeneratePermission() {
         return false;
     }
 
+    /**
+     * Execute on the player thread context (provided by {@link AbstractPlayerCommand}).
+     *
+     * @param context   command context
+     * @param store     world ECS store
+     * @param ref       player entity ref
+     * @param playerRef player reference
+     * @param world     player world
+     */
     @Override
     protected void execute(
             @Nonnull CommandContext context,
@@ -47,14 +59,15 @@ public class UISubCommand extends AbstractPlayerCommand {
         }
 
         try {
-            Player player = store.getComponent(ref, Player.getComponentType());
+            final Player player = store.getComponent(ref, Player.getComponentType());
             if (player == null) {
                 context.sendMessage(Message.raw("Ошибка: Player component не найден."));
                 return;
             }
 
-            HideEnemyHealthDashboardUI page = new HideEnemyHealthDashboardUI(playerRef);
+            final HideEnemyHealthDashboardUI page = new HideEnemyHealthDashboardUI(playerRef);
             player.getPageManager().openCustomPage(ref, store, page);
+
         } catch (Exception e) {
             context.sendMessage(Message.raw("Ошибка открытия UI: " + e.getMessage()));
         }

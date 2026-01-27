@@ -24,19 +24,31 @@ import com.hypixel.hytale.server.core.util.NotificationUtil;
 import javax.annotation.Nonnull;
 
 /**
- * Admin UI for HideEnemyHealth.
+ * Admin dashboard UI for HideEnemyHealth.
+ *
+ * <p>UI is driven by a .ui layout file and event bindings.
+ * Any state changes are applied server-side to the config and then re-applied to currently loaded entities.</p>
  */
 public class HideEnemyHealthDashboardUI extends InteractiveCustomUIPage<HideEnemyHealthDashboardUI.UIEventData> {
 
+    /** Path to the UI layout asset. */
     public static final String LAYOUT = "hideenemyhealth/Dashboard.ui";
 
     private final PlayerRef playerRef;
 
+    /**
+     * Create the dashboard page.
+     *
+     * @param playerRef owning player reference
+     */
     public HideEnemyHealthDashboardUI(@Nonnull PlayerRef playerRef) {
         super(playerRef, CustomPageLifetime.CanDismiss, UIEventData.CODEC);
         this.playerRef = playerRef;
     }
 
+    /**
+     * Build the UI: load layout, bind events, and push initial state.
+     */
     @Override
     public void build(
             @Nonnull Ref<EntityStore> ref,
@@ -58,6 +70,9 @@ public class HideEnemyHealthDashboardUI extends InteractiveCustomUIPage<HideEnem
         syncUI(cmd);
     }
 
+    /**
+     * Create a UI event binding for a widget selector.
+     */
     private void bind(@Nonnull UIEventBuilder evt, @Nonnull String selector, @Nonnull String action) {
         evt.addEventBinding(
                 CustomUIEventBindingType.Activating,
@@ -67,8 +82,11 @@ public class HideEnemyHealthDashboardUI extends InteractiveCustomUIPage<HideEnem
         );
     }
 
+    /**
+     * Sync current config values into UI widget labels.
+     */
     private void syncUI(@Nonnull UICommandBuilder cmd) {
-        HideEnemyHealthConfig cfg = HideEnemyHealthPlugin.getInstance().getConfig();
+        final HideEnemyHealthConfig cfg = HideEnemyHealthPlugin.getInstance().getConfig();
 
         cmd.set("#TogglePlayersHealthButton.Text", cfg.getPlayers().hideHealthBar ? "ON" : "OFF");
         cmd.set("#TogglePlayersDamageButton.Text", cfg.getPlayers().hideDamageNumbers ? "ON" : "OFF");
@@ -77,6 +95,11 @@ public class HideEnemyHealthDashboardUI extends InteractiveCustomUIPage<HideEnem
         cmd.set("#ToggleNpcsDamageButton.Text", cfg.getNpcs().hideDamageNumbers ? "ON" : "OFF");
     }
 
+    /**
+     * Handle a UI event sent from the client.
+     *
+     * <p>We enforce permissions server-side (fail closed): only admins may mutate config.</p>
+     */
     @Override
     public void handleDataEvent(
             @Nonnull Ref<EntityStore> ref,
@@ -106,23 +129,29 @@ public class HideEnemyHealthDashboardUI extends InteractiveCustomUIPage<HideEnem
         final HideEnemyHealthConfig cfg = plugin.getConfig();
 
         boolean changed = false;
+        boolean refreshPlayers = false;
+        boolean refreshNpcs = false;
 
         switch (data.action) {
             case "toggle_players_health" -> {
                 cfg.getPlayers().hideHealthBar = !cfg.getPlayers().hideHealthBar;
                 changed = true;
+                refreshPlayers = true;
             }
             case "toggle_players_damage" -> {
                 cfg.getPlayers().hideDamageNumbers = !cfg.getPlayers().hideDamageNumbers;
                 changed = true;
+                refreshPlayers = true;
             }
             case "toggle_npcs_health" -> {
                 cfg.getNpcs().hideHealthBar = !cfg.getNpcs().hideHealthBar;
                 changed = true;
+                refreshNpcs = true;
             }
             case "toggle_npcs_damage" -> {
                 cfg.getNpcs().hideDamageNumbers = !cfg.getNpcs().hideDamageNumbers;
                 changed = true;
+                refreshNpcs = true;
             }
             case "refresh" -> {
                 // no config change, just re-apply
@@ -135,35 +164,54 @@ public class HideEnemyHealthDashboardUI extends InteractiveCustomUIPage<HideEnem
                 this.close();
                 return;
             }
+            default -> {
+                // Unknown action: ignore.
+                return;
+            }
         }
 
-        if (changed) {
-            // Persist + apply
-            cfg.normalize();
-            plugin.saveConfig();
-            HideEntityUiSystem.setConfig(cfg);
+        if (!changed) return;
+
+        // Persist + publish updated config
+        cfg.normalize();
+        plugin.saveConfig();
+        HideEntityUiSystem.setConfig(cfg);
+
+        // Refresh only what changed (players or NPCs). If both flags are false for some reason, refresh all.
+        if (refreshPlayers && !refreshNpcs) {
+            HideEntityUiSystem.refreshLoadedPlayers();
+        } else if (refreshNpcs && !refreshPlayers) {
+            HideEntityUiSystem.refreshLoadedNpcs();
+        } else {
             HideEntityUiSystem.refreshLoadedEntities();
-
-            UICommandBuilder cmd = new UICommandBuilder();
-            syncUI(cmd);
-            cmd.set("#StatusText.Text", "Сохранено и применено.");
-            this.sendUpdate(cmd, false);
-
-            NotificationUtil.sendNotification(
-                    playerRef.getPacketHandler(),
-                    Message.raw("HideEnemyHealth"),
-                    Message.raw("Сохранено и применено."),
-                    NotificationStyle.Success
-            );
         }
+
+        // Update UI widgets
+        final UICommandBuilder cmd = new UICommandBuilder();
+        syncUI(cmd);
+        cmd.set("#StatusText.Text", "Сохранено и применено.");
+        this.sendUpdate(cmd, false);
+
+        NotificationUtil.sendNotification(
+                playerRef.getPacketHandler(),
+                Message.raw("HideEnemyHealth"),
+                Message.raw("Сохранено и применено."),
+                NotificationStyle.Success
+        );
     }
 
+    /**
+     * Update the status text in the UI.
+     */
     private void sendStatus(@Nonnull String text) {
         UICommandBuilder cmd = new UICommandBuilder();
         cmd.set("#StatusText.Text", text);
         this.sendUpdate(cmd, false);
     }
 
+    /**
+     * UI event payload codec.
+     */
     public static class UIEventData {
         public static final BuilderCodec<UIEventData> CODEC = BuilderCodec.builder(
                         UIEventData.class, UIEventData::new
