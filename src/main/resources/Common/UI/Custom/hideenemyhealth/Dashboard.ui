@@ -1,0 +1,172 @@
+// HideEnemyHealth Dashboard UI
+$Common = "Common.ui";
+
+// Button styles (по шаблону)
+@PrimaryButton = TextButtonStyle(
+  Default: (Background: #3a7bd5, LabelStyle: (FontSize: 14, TextColor: #ffffff, RenderBold: true, HorizontalAlignment: Center, VerticalAlignment: Center)),
+  Hovered: (Background: #4a8be5, LabelStyle: (FontSize: 14, TextColor: #ffffff, RenderBold: true, HorizontalAlignment: Center, VerticalAlignment: Center)),
+  Pressed: (Background: #2a6bc5, LabelStyle: (FontSize: 14, TextColor: #ffffff, RenderBold: true, HorizontalAlignment: Center, VerticalAlignment: Center))
+);
+
+@SecondaryButton = TextButtonStyle(
+  Default: (Background: #2b3542, LabelStyle: (FontSize: 14, TextColor: #96a9be, RenderBold: true, HorizontalAlignment: Center, VerticalAlignment: Center)),
+  Hovered: (Background: #3b4552, LabelStyle: (FontSize: 14, TextColor: #b6c9de, RenderBold: true, HorizontalAlignment: Center, VerticalAlignment: Center)),
+  Pressed: (Background: #1b2532, LabelStyle: (FontSize: 14, TextColor: #96a9be, RenderBold: true, HorizontalAlignment: Center, VerticalAlignment: Center))
+);
+
+// Root overlay (центрирует панель)
+Group #Root {
+  Anchor: (Left: 0, Right: 0, Top: 0, Bottom: 0);
+  LayoutMode: Center;
+  Background: #000000(0.35);
+
+  // Main panel
+  Group #ContentPanel {
+    Anchor: (Width: 640, Height: 560);
+    Background: #141c26(0.98);
+    LayoutMode: Top;
+    Padding: (Full: 20);
+
+    // Title
+    Label #TitleText {
+      Text: "HideEnemyHealth";
+      Anchor: (Height: 44);
+      Style: (FontSize: 24, TextColor: #ffffff, HorizontalAlignment: Center, RenderBold: true);
+    }
+
+    // Subtitle
+    Label #StatusText {
+      Text: "Настройки (только админы)";
+      Anchor: (Height: 28);
+      Style: (FontSize: 16, TextColor: #96a9be, HorizontalAlignment: Center);
+    }
+
+    // Separator
+    Group { Anchor: (Height: 1); Background: #2b3542; }
+    Group { Anchor: (Height: 16); }
+
+    // Settings list
+    Group #SettingsPanel {
+      LayoutMode: Top;
+      Anchor: (Height: 340);
+
+      // Row helper: each row is Height: 48 + spacer
+      Group {
+        LayoutMode: Center;
+        Anchor: (Height: 48);
+
+        Label {
+          Text: "Игроки: скрыть полоску HP";
+          Anchor: (Height: 32);
+          Style: (FontSize: 16, TextColor: #ffffff, HorizontalAlignment: Start);
+          FlexWeight: 1;
+        }
+
+        TextButton #TogglePlayersHealthButton {
+          Text: "ON";
+          Anchor: (Width: 160, Height: 36);
+          Style: @PrimaryButton;
+        }
+      }
+
+      Group { Anchor: (Height: 10); }
+
+      Group {
+        LayoutMode: Center;
+        Anchor: (Height: 48);
+
+        Label {
+          Text: "Игроки: скрыть цифры урона";
+          Anchor: (Height: 32);
+          Style: (FontSize: 16, TextColor: #ffffff, HorizontalAlignment: Start);
+          FlexWeight: 1;
+        }
+
+        TextButton #TogglePlayersDamageButton {
+          Text: "OFF";
+          Anchor: (Width: 160, Height: 36);
+          Style: @PrimaryButton;
+        }
+      }
+
+      Group { Anchor: (Height: 10); }
+
+      Group {
+        LayoutMode: Center;
+        Anchor: (Height: 48);
+
+        Label {
+          Text: "NPC: скрыть полоску HP";
+          Anchor: (Height: 32);
+          Style: (FontSize: 16, TextColor: #ffffff, HorizontalAlignment: Start);
+          FlexWeight: 1;
+        }
+
+        TextButton #ToggleNpcsHealthButton {
+          Text: "ON";
+          Anchor: (Width: 160, Height: 36);
+          Style: @PrimaryButton;
+        }
+      }
+
+      Group { Anchor: (Height: 10); }
+
+      Group {
+        LayoutMode: Center;
+        Anchor: (Height: 48);
+
+        Label {
+          Text: "NPC: скрыть цифры урона";
+          Anchor: (Height: 32);
+          Style: (FontSize: 16, TextColor: #ffffff, HorizontalAlignment: Start);
+          FlexWeight: 1;
+        }
+
+        TextButton #ToggleNpcsDamageButton {
+          Text: "OFF";
+          Anchor: (Width: 160, Height: 36);
+          Style: @PrimaryButton;
+        }
+      }
+
+      Group { Anchor: (Height: 14); }
+
+      Label #HintText {
+        Text: "Изменения применяются сразу (для загруженных сущностей).";
+        Anchor: (Height: 22);
+        Style: (FontSize: 12, TextColor: #6e7da1, HorizontalAlignment: Center);
+      }
+    }
+
+    // Spacer pushes bottom buttons down
+    Group { FlexWeight: 1; }
+
+    // Bottom buttons row
+    Group {
+      LayoutMode: Center;
+      Anchor: (Height: 56);
+
+      TextButton #RefreshButton {
+        Text: "Применить / Обновить";
+        Anchor: (Width: 260, Height: 44);
+        Style: @PrimaryButton;
+      }
+
+      Group { Anchor: (Width: 16); }
+
+      TextButton #CloseButton {
+        Text: "Закрыть";
+        Anchor: (Width: 260, Height: 44);
+        Style: @SecondaryButton;
+      }
+    }
+
+    Group { Anchor: (Height: 8); }
+
+    Label {
+      Text: "Press ESC to close";
+      Anchor: (Height: 16);
+      Style: (FontSize: 11, TextColor: #555555, HorizontalAlignment: Center);
+    }
+  }
+}

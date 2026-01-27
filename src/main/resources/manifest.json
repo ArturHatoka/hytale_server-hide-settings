@@ -1,0 +1,14 @@
+{
+  "Group": "com.example",
+  "Name": "Hide Enemy Health",
+  "Version": "1.2.0",
+  "Description": "Hides overhead health bars (and optionally damage numbers) for players/NPCs. Admin-controlled via in-game UI.",
+  "Authors": [
+    {
+      "Name": "Hatoka"
+    }
+  ],
+  "Main": "com.example.hideenemyhealth.HideEnemyHealthPlugin",
+  "LoadOrder": "POSTWORLD",
+  "IncludesAssetPack": true
+}
