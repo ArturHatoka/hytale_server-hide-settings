@@ -5,6 +5,7 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -19,7 +20,14 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class EntityUiBaselineCache {
 
-    private static final ConcurrentHashMap<Long, int[]> BASELINE_COMPONENT_IDS = new ConcurrentHashMap<>();
+    /** Unknown entity category (avoid aggressive GC sweeps). */
+    public static final byte KIND_UNKNOWN = 0;
+    /** Baseline belongs to a player entity. */
+    public static final byte KIND_PLAYER = 1;
+    /** Baseline belongs to an NPC entity. */
+    public static final byte KIND_NPC = 2;
+
+    private static final ConcurrentHashMap<Long, BaselineEntry> BASELINES = new ConcurrentHashMap<>();
 
     private EntityUiBaselineCache() {
     }
@@ -45,15 +53,29 @@ public final class EntityUiBaselineCache {
     }
 
     /**
+     * Extract store id from an {@link #entityKey(Ref)}.
+     */
+    public static int storeIdFromKey(final long key) {
+        return (int) (key >>> 32);
+    }
+
+    /**
      * Store baseline for a key if absent.
      *
      * @param key         entity key (see {@link #entityKey(Ref)})
      * @param baselineIds baseline IDs
-     * @return stored baseline (existing or the provided one)
+     * @param kind        entity category (player/npc)
+     * @return stored baseline IDs (existing or the provided one)
      */
     @Nonnull
-    public static int[] putBaselineIfAbsent(final long key, @Nonnull final int[] baselineIds) {
-        return BASELINE_COMPONENT_IDS.computeIfAbsent(key, k -> baselineIds.clone());
+    public static int[] putBaselineIfAbsent(final long key, @Nonnull final int[] baselineIds, final byte kind) {
+        final BaselineEntry entry = BASELINES.computeIfAbsent(key, k -> new BaselineEntry(baselineIds.clone(), kind));
+        // If we learned the entity kind later, update it (unknown -> known).
+        if (entry.kind == KIND_UNKNOWN && kind != KIND_UNKNOWN) {
+            entry.kind = kind;
+        }
+        entry.touch();
+        return entry.baselineIds;
     }
 
     /**
@@ -62,17 +84,17 @@ public final class EntityUiBaselineCache {
      */
     @Nullable
     public static int[] getBaseline(final long key) {
-        return BASELINE_COMPONENT_IDS.get(key);
+        final BaselineEntry entry = BASELINES.get(key);
+        if (entry == null) return null;
+        entry.touch();
+        return entry.baselineIds;
     }
-
 
     /**
      * Remove baseline entry for an entity key.
-     *
-     * @param key entity key (see {@link #entityKey(Ref)})
      */
     public static void remove(final long key) {
-        BASELINE_COMPONENT_IDS.remove(key);
+        BASELINES.remove(key);
     }
 
     /**
@@ -86,6 +108,67 @@ public final class EntityUiBaselineCache {
      * Clear all baseline entries (used on plugin shutdown / hot-reload).
      */
     public static void clearAll() {
-        BASELINE_COMPONENT_IDS.clear();
+        BASELINES.clear();
+    }
+
+    /**
+     * Sweep orphan baseline entries for a specific store.
+     *
+     * <p>This is a defensive GC for rare cases where {@code onEntityRemove} is not called.
+     * We only remove entries of kinds that were actually scanned during this sweep.</p>
+     *
+     * @param storeId        store identity hash used by {@link #entityKey(Ref)}
+     * @param aliveKeys      keys observed during the scan
+     * @param sweepKindsMask bitmask: {@link #KIND_PLAYER} and/or {@link #KIND_NPC}
+     * @return number of removed baseline entries
+     */
+    public static int sweepOrphanedForStore(final int storeId,
+                                           @Nonnull final LongKeySet aliveKeys,
+                                           final int sweepKindsMask) {
+        if (sweepKindsMask == 0) return 0;
+
+        int removed = 0;
+        for (Map.Entry<Long, BaselineEntry> e : BASELINES.entrySet()) {
+            final long key = e.getKey();
+            if (storeIdFromKey(key) != storeId) continue;
+
+            final BaselineEntry entry = e.getValue();
+            final int kindBit = (entry.kind == KIND_PLAYER) ? KIND_PLAYER : (entry.kind == KIND_NPC) ? KIND_NPC : 0;
+            if (kindBit == 0) continue; // unknown kind -> do not sweep
+            if ((sweepKindsMask & kindBit) == 0) continue;
+
+            if (!aliveKeys.contains(key)) {
+                if (BASELINES.remove(key, entry)) {
+                    removed++;
+                }
+            }
+        }
+        return removed;
+    }
+
+    /**
+     * Minimal primitive long set used for GC sweeps.
+     */
+    public interface LongKeySet {
+        boolean contains(long key);
+    }
+
+    /**
+     * Internal baseline entry.
+     */
+    private static final class BaselineEntry {
+        final int[] baselineIds;
+        volatile byte kind;
+        volatile long lastTouchNanos;
+
+        BaselineEntry(@Nonnull final int[] baselineIds, final byte kind) {
+            this.baselineIds = baselineIds;
+            this.kind = kind;
+            touch();
+        }
+
+        void touch() {
+            lastTouchNanos = System.nanoTime();
+        }
     }
 }

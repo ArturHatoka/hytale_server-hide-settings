@@ -32,6 +32,9 @@ public final class HideEntityUiApplier {
     /**
      * Apply current config to the given entity ref.
      *
+     * <p>This variant is used from ECS callbacks. It performs the mutation (if needed) and ignores
+     * the "changed" signal.</p>
+     *
      * @param entityRef entity reference (must be valid)
      * @param store     entity store
      * @param buffer    command buffer if called from ECS callback (preferred), otherwise null
@@ -41,23 +44,37 @@ public final class HideEntityUiApplier {
                                    @Nonnull final Store<EntityStore> store,
                                    @Nullable final CommandBuffer<EntityStore> buffer,
                                    @Nullable final Boolean forceNpc) {
+        applyForRefAndReport(entityRef, store, buffer, forceNpc);
+    }
 
-        if (!entityRef.isValid()) return;
+    /**
+     * Apply current config to the given entity ref and report whether a store update was performed.
+     *
+     * <p>This is used by explicit refresh passes so we can optionally log how many entities were
+     * actually changed.</p>
+     *
+     * @return true if the plugin wrote a new {@link UIComponentList} to the store for this entity
+     */
+    public static boolean applyForRefAndReport(@Nonnull final Ref<EntityStore> entityRef,
+                                               @Nonnull final Store<EntityStore> store,
+                                               @Nullable final CommandBuffer<EntityStore> buffer,
+                                               @Nullable final Boolean forceNpc) {
+
+        if (!entityRef.isValid()) return false;
 
         final HideEnemyHealthConfig cfg = HideEntityUiConfigRegistry.getConfig();
 
         final UIComponentList list = store.getComponent(entityRef, UIComponentList.getComponentType());
-        if (list == null) return;
+        if (list == null) return false;
 
         final int[] currentIds = UiComponentFieldAccessor.getComponentIds(list);
-        if (currentIds == null) return;
+        if (currentIds == null) return false;
 
         final long key = EntityUiBaselineCache.entityKey(entityRef);
 
         // If disabled globally -> restore baseline (if any) and drop cached baseline to avoid growth.
         if (!cfg.enabled) {
-            restoreBaselineIfPresent(key, currentIds, entityRef, store, buffer, list);
-            return;
+            return restoreBaselineIfPresent(key, currentIds, entityRef, store, buffer, list);
         }
 
         final boolean isPlayer;
@@ -73,21 +90,24 @@ public final class HideEntityUiApplier {
             }
         } catch (Throwable t) {
             // If the store throws for any reason, skip this entity.
-            return;
+            return false;
         }
+
+        final byte kind = isPlayer
+                ? EntityUiBaselineCache.KIND_PLAYER
+                : (isNpc ? EntityUiBaselineCache.KIND_NPC : EntityUiBaselineCache.KIND_UNKNOWN);
 
         final HideEnemyHealthConfig.TargetSettings settings =
                 isPlayer ? cfg.getPlayers() : (isNpc ? cfg.getNpcs() : null);
 
-        if (settings == null) return;
+        if (settings == null) return false;
 
         final boolean hideNone = !settings.hideDamageNumbers && !settings.hideHealthBar;
 
         // If nothing should be hidden, we only restore if we have a baseline and the entity was modified before.
         // This avoids creating baseline entries for entities when the feature is effectively off for them.
         if (hideNone) {
-            restoreBaselineIfPresent(key, currentIds, entityRef, store, buffer, list);
-            return;
+            return restoreBaselineIfPresent(key, currentIds, entityRef, store, buffer, list);
         }
 
         // Baseline must reflect the entity's original UI list (before we modify it).
@@ -96,9 +116,9 @@ public final class HideEntityUiApplier {
         final boolean baselineWasMissing = (existingBaseline == null);
         final int[] baseline = (existingBaseline != null)
                 ? existingBaseline
-                : EntityUiBaselineCache.putBaselineIfAbsent(key, buildBaselineFromCurrent(currentIds));
+                : EntityUiBaselineCache.putBaselineIfAbsent(key, buildBaselineFromCurrent(currentIds), kind);
 
-        if (!UiComponentCache.ensureCache()) return;
+        if (!UiComponentCache.ensureCache()) return false;
 
         final int[] desired = computeDesiredIds(baseline, settings);
         if (Arrays.equals(currentIds, desired)) {
@@ -106,11 +126,17 @@ public final class HideEntityUiApplier {
             if (baselineWasMissing) {
                 EntityUiBaselineCache.remove(key);
             }
-            return;
+            return false;
         }
 
-        UiComponentFieldAccessor.setComponentIds(list, desired);
-        putComponent(entityRef, store, buffer, list);
+        try {
+            UiComponentFieldAccessor.setComponentIds(list, desired);
+            putComponent(entityRef, store, buffer, list);
+            return true;
+        } catch (Throwable t) {
+            // Failed to write (store may be in a transient state). Keep baseline.
+            return false;
+        }
     }
 
     /**
@@ -147,30 +173,31 @@ public final class HideEntityUiApplier {
      * @param store      entity store
      * @param buffer     optional command buffer (ECS callback)
      * @param list       UI component list component
+     * @return true if we wrote a restored list to the store
      */
-    private static void restoreBaselineIfPresent(final long key,
-                                                 @Nonnull final int[] currentIds,
-                                                 @Nonnull final Ref<EntityStore> entityRef,
-                                                 @Nonnull final Store<EntityStore> store,
-                                                 @Nullable final CommandBuffer<EntityStore> buffer,
-                                                 @Nonnull final UIComponentList list) {
+    private static boolean restoreBaselineIfPresent(final long key,
+                                                   @Nonnull final int[] currentIds,
+                                                   @Nonnull final Ref<EntityStore> entityRef,
+                                                   @Nonnull final Store<EntityStore> store,
+                                                   @Nullable final CommandBuffer<EntityStore> buffer,
+                                                   @Nonnull final UIComponentList list) {
         final int[] baseline = EntityUiBaselineCache.getBaseline(key);
-        if (baseline == null) return;
+        if (baseline == null) return false;
 
-        boolean restored = Arrays.equals(currentIds, baseline);
-        if (!restored) {
-            try {
-                UiComponentFieldAccessor.setComponentIds(list, baseline.clone());
-                putComponent(entityRef, store, buffer, list);
-                restored = true;
-            } catch (Throwable ignored) {
-                restored = false;
-            }
+        final boolean alreadyRestored = Arrays.equals(currentIds, baseline);
+        if (alreadyRestored) {
+            EntityUiBaselineCache.remove(key);
+            return false;
         }
 
-        // Only drop baseline if we believe the entity is now restored.
-        if (restored) {
+        try {
+            UiComponentFieldAccessor.setComponentIds(list, baseline.clone());
+            putComponent(entityRef, store, buffer, list);
             EntityUiBaselineCache.remove(key);
+            return true;
+        } catch (Throwable ignored) {
+            // Keep baseline in cache if restore failed.
+            return false;
         }
     }
 

@@ -14,6 +14,10 @@ import com.hypixel.hytale.server.core.plugin.JavaPluginInit;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.io.File;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 
 /**
@@ -37,6 +41,12 @@ public final class HideEnemyHealthPlugin extends JavaPlugin {
 
     @Nullable
     private HideEnemyHealthConfig config;
+
+    @Nullable
+    private ScheduledExecutorService backgroundScheduler;
+
+    @Nullable
+    private ScheduledFuture<?> baselineGcFuture;
 
     /**
      * Standard Hytale plugin constructor.
@@ -83,6 +93,9 @@ public final class HideEnemyHealthPlugin extends JavaPlugin {
     public void reloadConfig() {
         config = configManager.loadOrCreate(configFile);
         HideEntityUiSystem.setConfig(config);
+
+        // Background jobs are config-driven (debug.baselineGc.enabled etc.).
+        restartBackgroundJobs();
     }
 
     /**
@@ -127,6 +140,9 @@ public final class HideEnemyHealthPlugin extends JavaPlugin {
     protected void shutdown() {
         LOGGER.at(Level.INFO).log("[HideEnemyHealth] Shutting down...");
 
+        // Stop background jobs early to avoid work during teardown.
+        stopBackgroundJobs();
+
         // Best-effort save.
         try {
             saveConfig();
@@ -142,6 +158,59 @@ public final class HideEnemyHealthPlugin extends JavaPlugin {
         }
 
         instance = null;
+    }
+
+    /**
+     * Start/stop background jobs depending on the active config.
+     *
+     * <p>We keep this conservative: everything is off by default and only enabled via config.</p>
+     */
+    private synchronized void restartBackgroundJobs() {
+        stopBackgroundJobs();
+
+        final HideEnemyHealthConfig cfg = getConfig();
+        if (cfg.debug == null || cfg.debug.baselineGc == null || !cfg.debug.baselineGc.enabled) {
+            return;
+        }
+
+        final int intervalSeconds = cfg.debug.baselineGc.intervalSeconds;
+
+        backgroundScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+            final Thread t = new Thread(r, "HideEnemyHealth-Background");
+            t.setDaemon(true);
+            return t;
+        });
+
+        baselineGcFuture = backgroundScheduler.scheduleAtFixedRate(() -> {
+            try {
+                HideEntityUiSystem.gcBaselineCache();
+            } catch (Throwable t) {
+                LOGGER.at(Level.FINE).withCause(t).log("[HideEnemyHealth] Baseline GC tick failed");
+            }
+        }, intervalSeconds, intervalSeconds, TimeUnit.SECONDS);
+
+        LOGGER.at(Level.INFO).log("[HideEnemyHealth] Baseline GC enabled (interval=%ds)", intervalSeconds);
+    }
+
+    /**
+     * Stop background jobs and shutdown their executor (if any).
+     */
+    private synchronized void stopBackgroundJobs() {
+        if (baselineGcFuture != null) {
+            try {
+                baselineGcFuture.cancel(false);
+            } catch (Throwable ignored) {
+            }
+            baselineGcFuture = null;
+        }
+
+        if (backgroundScheduler != null) {
+            try {
+                backgroundScheduler.shutdownNow();
+            } catch (Throwable ignored) {
+            }
+            backgroundScheduler = null;
+        }
     }
 
     /**

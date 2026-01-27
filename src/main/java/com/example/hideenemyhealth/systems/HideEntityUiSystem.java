@@ -120,6 +120,13 @@ public final class HideEntityUiSystem extends RefSystem<EntityStore> {
     }
 
     /**
+     * Run a defensive baseline cache GC sweep (best-effort).
+     */
+    public static void gcBaselineCache() {
+        HideEntityUiWorldRefresher.gcBaselineCache();
+    }
+
+    /**
      * Called by ECS when an entity matching {@link #getQuery()} appears or changes archetype.
      */
     @Override

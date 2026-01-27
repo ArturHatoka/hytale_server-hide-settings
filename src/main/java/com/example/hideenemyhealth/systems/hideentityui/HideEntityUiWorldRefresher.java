@@ -1,5 +1,6 @@
 package com.example.hideenemyhealth.systems.hideentityui;
 
+import com.example.hideenemyhealth.config.HideEnemyHealthConfig;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.logger.HytaleLogger;
@@ -35,6 +36,7 @@ public final class HideEntityUiWorldRefresher {
     // repeatedly iterate worlds and enqueue redundant world.execute() tasks.
     private static final int REFRESH_PLAYERS_MASK = 1;
     private static final int REFRESH_NPCS_MASK = 2;
+    private static final int BASELINE_GC_MASK = 4;
 
     private static final AtomicInteger PENDING_REFRESH_MASK = new AtomicInteger(0);
     private static final AtomicBoolean REFRESH_LOOP_RUNNING = new AtomicBoolean(false);
@@ -83,6 +85,16 @@ public final class HideEntityUiWorldRefresher {
     }
 
     /**
+     * Trigger a defensive baseline-cache GC sweep.
+     *
+     * <p>This does not modify live entities; it only removes baseline entries that refer to entities
+     * that are no longer present (best-effort, conservative).</p>
+     */
+    public static void gcBaselineCache() {
+        requestRefresh(BASELINE_GC_MASK);
+    }
+
+    /**
      * Request a refresh pass. Multiple requests are coalesced into a single world iteration.
      *
      * <p>Implementation detail: this uses an in-memory bitmask and a single-thread "drain loop".
@@ -107,13 +119,31 @@ public final class HideEntityUiWorldRefresher {
 
                 final boolean players = (pendingMask & REFRESH_PLAYERS_MASK) != 0;
                 final boolean npcs = (pendingMask & REFRESH_NPCS_MASK) != 0;
+                final boolean gc = (pendingMask & BASELINE_GC_MASK) != 0;
 
-                if (players && npcs) {
+                if (players && npcs && gc) {
+                    forEachWorldOnWorldThread(world -> {
+                        refreshWorld(world);
+                        baselineGcSweepWorld(world);
+                    });
+                } else if (players && npcs) {
                     forEachWorldOnWorldThread(HideEntityUiWorldRefresher::refreshWorld);
+                } else if (players && gc) {
+                    forEachWorldOnWorldThread(world -> {
+                        refreshPlayers(world);
+                        baselineGcSweepWorld(world);
+                    });
+                } else if (npcs && gc) {
+                    forEachWorldOnWorldThread(world -> {
+                        refreshNpcs(world);
+                        baselineGcSweepWorld(world);
+                    });
                 } else if (players) {
                     forEachWorldOnWorldThread(HideEntityUiWorldRefresher::refreshPlayers);
                 } else if (npcs) {
                     forEachWorldOnWorldThread(HideEntityUiWorldRefresher::refreshNpcs);
+                } else if (gc) {
+                    forEachWorldOnWorldThread(HideEntityUiWorldRefresher::baselineGcSweepWorld);
                 }
             }
         } finally {
@@ -156,6 +186,11 @@ public final class HideEntityUiWorldRefresher {
      * Refresh all players currently present in a world.
      */
     private static void refreshPlayers(@Nonnull final World world) {
+        final HideEnemyHealthConfig cfg = HideEntityUiConfigRegistry.getConfig();
+        final boolean log = cfg.debug != null && cfg.debug.logRefreshStats;
+        final long t0 = log ? System.nanoTime() : 0L;
+        int visited = 0;
+        int changed = 0;
         try {
             for (PlayerRef playerRef : world.getPlayerRefs()) {
                 if (playerRef == null) continue;
@@ -163,14 +198,26 @@ public final class HideEntityUiWorldRefresher {
                 final Ref<EntityStore> ref = safeGetPlayerEntityRef(playerRef);
                 if (ref == null || !ref.isValid()) continue;
 
+                visited++;
+
                 final Store<EntityStore> store = ref.getStore();
                 if (store == null) continue;
 
-                HideEntityUiApplier.applyForRef(ref, store, null, Boolean.FALSE);
+                if (HideEntityUiApplier.applyForRefAndReport(ref, store, null, Boolean.FALSE)) {
+                    changed++;
+                }
             }
         } catch (Throwable t) {
             LOGGER.at(Level.WARNING).withCause(t)
                     .log("[HideEnemyHealth] Failed to refresh players in world: %s", safeWorldName(world));
+        } finally {
+            if (log) {
+                final long ms = (System.nanoTime() - t0) / 1_000_000L;
+                LOGGER.at(Level.INFO).log(
+                        "[HideEnemyHealth][Refresh] world=%s players visited=%d changed=%d timeMs=%d",
+                        safeWorldName(world), visited, changed, ms
+                );
+            }
         }
     }
 
@@ -181,8 +228,23 @@ public final class HideEntityUiWorldRefresher {
      * If the method isn't available, we quietly skip NPC refresh.</p>
      */
     private static void refreshNpcs(@Nonnull final World world) {
+        final HideEnemyHealthConfig cfg = HideEntityUiConfigRegistry.getConfig();
+        final boolean log = cfg.debug != null && cfg.debug.logRefreshStats;
+        final long t0 = log ? System.nanoTime() : 0L;
+
         final Iterable<?> npcRefs = getNpcRefs(world);
-        if (npcRefs == null) return;
+        if (npcRefs == null) {
+            if (log) {
+                LOGGER.at(Level.INFO).log(
+                        "[HideEnemyHealth][Refresh] world=%s npcs skipped (API not available)",
+                        safeWorldName(world)
+                );
+            }
+            return;
+        }
+
+        int visited = 0;
+        int changed = 0;
 
         try {
             for (Object npcRefLike : npcRefs) {
@@ -191,14 +253,201 @@ public final class HideEntityUiWorldRefresher {
                 final Ref<EntityStore> ref = coerceToEntityRef(npcRefLike);
                 if (ref == null || !ref.isValid()) continue;
 
+                visited++;
+
                 final Store<EntityStore> store = ref.getStore();
                 if (store == null) continue;
 
-                HideEntityUiApplier.applyForRef(ref, store, null, Boolean.TRUE);
+                if (HideEntityUiApplier.applyForRefAndReport(ref, store, null, Boolean.TRUE)) {
+                    changed++;
+                }
             }
         } catch (Throwable t) {
             LOGGER.at(Level.FINE).withCause(t)
                     .log("[HideEnemyHealth] NPC refresh skipped due to API differences (world=%s)", safeWorldName(world));
+        } finally {
+            if (log) {
+                final long ms = (System.nanoTime() - t0) / 1_000_000L;
+                LOGGER.at(Level.INFO).log(
+                        "[HideEnemyHealth][Refresh] world=%s npcs visited=%d changed=%d timeMs=%d",
+                        safeWorldName(world), visited, changed, ms
+                );
+            }
+        }
+    }
+
+    /**
+     * Perform a conservative baseline-cache sweep for a single world.
+     *
+     * <p>We only sweep NPC baselines if we successfully observed at least one NPC ref. This avoids
+     * false positives on server builds where NPC refs are not exposed or incomplete.</p>
+     */
+    private static void baselineGcSweepWorld(@Nonnull final World world) {
+        final HideEnemyHealthConfig cfg = HideEntityUiConfigRegistry.getConfig();
+        final boolean log = cfg.debug != null && cfg.debug.logRefreshStats;
+        final long t0 = log ? System.nanoTime() : 0L;
+
+        final LongHashSet aliveKeys = new LongHashSet(256);
+        final IntHashSet storeIds = new IntHashSet(8);
+
+        int seenPlayers = 0;
+        int seenNpcs = 0;
+
+        // Players are accessible via world.getPlayerRefs().
+        try {
+            for (PlayerRef playerRef : world.getPlayerRefs()) {
+                if (playerRef == null) continue;
+                final Ref<EntityStore> ref = safeGetPlayerEntityRef(playerRef);
+                if (ref == null || !ref.isValid()) continue;
+
+                final long key = EntityUiBaselineCache.entityKey(ref);
+                aliveKeys.add(key);
+                storeIds.add(EntityUiBaselineCache.storeIdFromKey(key));
+                seenPlayers++;
+            }
+        } catch (Throwable ignored) {
+        }
+
+        // NPCs may be unavailable depending on server build.
+        final Iterable<?> npcRefs = getNpcRefs(world);
+        if (npcRefs != null) {
+            try {
+                for (Object npcRefLike : npcRefs) {
+                    if (npcRefLike == null) continue;
+                    final Ref<EntityStore> ref = coerceToEntityRef(npcRefLike);
+                    if (ref == null || !ref.isValid()) continue;
+
+                    final long key = EntityUiBaselineCache.entityKey(ref);
+                    aliveKeys.add(key);
+                    storeIds.add(EntityUiBaselineCache.storeIdFromKey(key));
+                    seenNpcs++;
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+
+        // We can only sweep stores for which we observed at least one entity ref.
+        if (storeIds.isEmpty()) return;
+
+        int sweepKindsMask = EntityUiBaselineCache.KIND_PLAYER;
+        if (seenNpcs > 0) {
+            sweepKindsMask |= EntityUiBaselineCache.KIND_NPC;
+        }
+
+        int removed = 0;
+        for (int i = 0; i < storeIds.size; i++) {
+            final int storeId = storeIds.values[i];
+            if (!storeIds.used[i]) continue;
+            removed += EntityUiBaselineCache.sweepOrphanedForStore(storeId, aliveKeys, sweepKindsMask);
+        }
+
+        if (log) {
+            final long ms = (System.nanoTime() - t0) / 1_000_000L;
+            LOGGER.at(Level.INFO).log(
+                    "[HideEnemyHealth][BaselineGC] world=%s stores=%d seenPlayers=%d seenNpcs=%d removed=%d timeMs=%d",
+                    safeWorldName(world), storeIds.count, seenPlayers, seenNpcs, removed, ms
+            );
+        }
+    }
+
+    /**
+     * Minimal primitive long hash set (open addressing).
+     */
+    private static final class LongHashSet implements EntityUiBaselineCache.LongKeySet {
+        private long[] keys;
+        private boolean[] used;
+        private int size;
+
+        LongHashSet(int initialCapacity) {
+            int cap = 1;
+            while (cap < initialCapacity) cap <<= 1;
+            keys = new long[cap];
+            used = new boolean[cap];
+        }
+
+        void add(long key) {
+            if ((size + 1) * 2 >= keys.length) rehash(keys.length << 1);
+            int idx = mix64To32(key) & (keys.length - 1);
+            while (used[idx]) {
+                if (keys[idx] == key) return;
+                idx = (idx + 1) & (keys.length - 1);
+            }
+            used[idx] = true;
+            keys[idx] = key;
+            size++;
+        }
+
+        @Override
+        public boolean contains(long key) {
+            int idx = mix64To32(key) & (keys.length - 1);
+            while (used[idx]) {
+                if (keys[idx] == key) return true;
+                idx = (idx + 1) & (keys.length - 1);
+            }
+            return false;
+        }
+
+        private void rehash(int newCap) {
+            final long[] oldKeys = keys;
+            final boolean[] oldUsed = used;
+            keys = new long[newCap];
+            used = new boolean[newCap];
+            size = 0;
+            for (int i = 0; i < oldKeys.length; i++) {
+                if (oldUsed[i]) add(oldKeys[i]);
+            }
+        }
+
+        private static int mix64To32(long z) {
+            z ^= (z >>> 33);
+            z *= 0xff51afd7ed558ccdL;
+            z ^= (z >>> 33);
+            z *= 0xc4ceb9fe1a85ec53L;
+            z ^= (z >>> 33);
+            return (int) z;
+        }
+    }
+
+    /**
+     * Minimal primitive int hash set (open addressing).
+     */
+    private static final class IntHashSet {
+        final int[] values;
+        final boolean[] used;
+        int count;
+        final int size;
+
+        IntHashSet(int initialCapacity) {
+            int cap = 1;
+            while (cap < initialCapacity) cap <<= 1;
+            this.values = new int[cap];
+            this.used = new boolean[cap];
+            this.size = cap;
+            this.count = 0;
+        }
+
+        void add(int v) {
+            int idx = mix32(v) & (size - 1);
+            while (used[idx]) {
+                if (values[idx] == v) return;
+                idx = (idx + 1) & (size - 1);
+            }
+            used[idx] = true;
+            values[idx] = v;
+            count++;
+        }
+
+        boolean isEmpty() {
+            return count == 0;
+        }
+
+        private static int mix32(int x) {
+            x ^= (x >>> 16);
+            x *= 0x7feb352d;
+            x ^= (x >>> 15);
+            x *= 0x846ca68b;
+            x ^= (x >>> 16);
+            return x;
         }
     }
 
