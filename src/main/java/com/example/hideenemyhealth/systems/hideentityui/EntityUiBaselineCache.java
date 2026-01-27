@@ -4,7 +4,6 @@ import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
 import javax.annotation.Nonnull;
-import java.lang.reflect.Method;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class EntityUiBaselineCache {
@@ -14,26 +13,25 @@ public final class EntityUiBaselineCache {
     private EntityUiBaselineCache() {
     }
 
+    /**
+     * Build a stable key for a Ref within a Store.
+     *
+     * We use (store identity hash << 32) ^ ref.getIndex(). Indexes are per-store; combining with store id
+     * prevents collisions across worlds.
+     */
     public static long entityKey(@Nonnull final Ref<EntityStore> ref) {
         try {
-            final String[] candidates = new String[]{"getId", "getEntityId", "getIndex", "getNetworkId"};
-            for (String mName : candidates) {
-                try {
-                    final Method m = ref.getClass().getMethod(mName);
-                    final Object v = m.invoke(ref);
-                    if (v instanceof Number) {
-                        return ((Number) v).longValue();
-                    }
-                } catch (NoSuchMethodException ignored) {
-                }
-            }
+            if (!ref.isValid()) return System.identityHashCode(ref);
+            final int storeId = System.identityHashCode(ref.getStore());
+            final long idx = ((long) ref.getIndex()) & 0xFFFF_FFFFL;
+            return (((long) storeId) << 32) ^ idx;
         } catch (Throwable ignored) {
+            return System.identityHashCode(ref);
         }
-        return System.identityHashCode(ref);
     }
 
-    public static int[] getOrCreateBaseline(final long key, @Nonnull final int[] currentIds) {
-        return BASELINE_COMPONENT_IDS.computeIfAbsent(key, k -> currentIds.clone());
+    public static int[] putBaselineIfAbsent(final long key, @Nonnull final int[] baselineIds) {
+        return BASELINE_COMPONENT_IDS.computeIfAbsent(key, k -> baselineIds.clone());
     }
 
     public static int[] getBaseline(final long key) {
@@ -42,5 +40,9 @@ public final class EntityUiBaselineCache {
 
     public static void remove(@Nonnull final Ref<EntityStore> ref) {
         BASELINE_COMPONENT_IDS.remove(entityKey(ref));
+    }
+
+    public static void clearAll() {
+        BASELINE_COMPONENT_IDS.clear();
     }
 }

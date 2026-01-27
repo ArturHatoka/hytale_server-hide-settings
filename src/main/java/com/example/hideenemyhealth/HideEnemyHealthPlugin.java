@@ -4,6 +4,8 @@ import com.example.hideenemyhealth.commands.HideEnemyHealthPluginCommand;
 import com.example.hideenemyhealth.config.ConfigManager;
 import com.example.hideenemyhealth.config.HideEnemyHealthConfig;
 import com.example.hideenemyhealth.systems.HideEntityUiSystem;
+import com.example.hideenemyhealth.systems.hideentityui.EntityUiBaselineCache;
+import com.example.hideenemyhealth.systems.hideentityui.UiComponentCache;
 import com.hypixel.hytale.event.EventRegistry;
 import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.server.core.plugin.JavaPlugin;
@@ -32,7 +34,6 @@ public class HideEnemyHealthPlugin extends JavaPlugin {
 
     public HideEnemyHealthPlugin(@Nonnull JavaPluginInit init) {
         super(init);
-        instance = this;
     }
 
     public static HideEnemyHealthPlugin getInstance() {
@@ -59,6 +60,7 @@ public class HideEnemyHealthPlugin extends JavaPlugin {
 
     @Override
     protected void setup() {
+        instance = this;
         LOGGER.at(Level.INFO).log("[HideEnemyHealth] Setting up...");
 
         // Config
@@ -115,6 +117,14 @@ public class HideEnemyHealthPlugin extends JavaPlugin {
     protected void shutdown() {
         LOGGER.at(Level.INFO).log("[HideEnemyHealth] Shutting down...");
         saveConfig();
+
+        // Defensive cleanup to avoid stale static state after hot reload.
+        try {
+            EntityUiBaselineCache.clearAll();
+            UiComponentCache.resetCache();
+        } catch (Throwable ignored) {
+        }
+
         instance = null;
     }
 }

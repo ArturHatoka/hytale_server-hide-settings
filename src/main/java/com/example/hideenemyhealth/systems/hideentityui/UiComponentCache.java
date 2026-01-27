@@ -15,11 +15,24 @@ public final class UiComponentCache {
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
 
+    // Optional sets (handy for debugging / logging). Membership checks use boolean flags (no boxing).
     private static volatile Set<Integer> COMBAT_TEXT_IDS = Set.of();
     private static volatile Set<Integer> HEALTH_STAT_IDS = Set.of();
+
+    private static volatile boolean[] COMBAT_TEXT_FLAGS = new boolean[0];
+    private static volatile boolean[] HEALTH_STAT_FLAGS = new boolean[0];
+
     private static volatile boolean CACHE_READY = false;
 
     private UiComponentCache() {
+    }
+
+    public static void resetCache() {
+        CACHE_READY = false;
+        COMBAT_TEXT_IDS = Set.of();
+        HEALTH_STAT_IDS = Set.of();
+        COMBAT_TEXT_FLAGS = new boolean[0];
+        HEALTH_STAT_FLAGS = new boolean[0];
     }
 
     public static boolean ensureCache() {
@@ -36,6 +49,9 @@ public final class UiComponentCache {
             final HashSet<Integer> combat = new HashSet<>();
             final HashSet<Integer> health = new HashSet<>();
 
+            final boolean[] combatFlags = new boolean[Math.max(0, nextIndex)];
+            final boolean[] healthFlags = new boolean[Math.max(0, nextIndex)];
+
             for (int i = 0; i < nextIndex; i++) {
                 final Object raw = assetMap.getAsset(i);
                 if (!(raw instanceof EntityUIComponent uiAsset)) continue;
@@ -48,13 +64,17 @@ public final class UiComponentCache {
 
                 if (type == EntityUIType.CombatText) {
                     combat.add(i);
+                    combatFlags[i] = true;
                 } else if (type == EntityUIType.EntityStat && packet.entityStatIndex == healthIndex) {
                     health.add(i);
+                    healthFlags[i] = true;
                 }
             }
 
             COMBAT_TEXT_IDS = Collections.unmodifiableSet(combat);
             HEALTH_STAT_IDS = Collections.unmodifiableSet(health);
+            COMBAT_TEXT_FLAGS = combatFlags;
+            HEALTH_STAT_FLAGS = healthFlags;
             CACHE_READY = true;
 
             LOGGER.at(Level.INFO).log(
@@ -70,10 +90,31 @@ public final class UiComponentCache {
     }
 
     public static boolean isCombatTextId(final int id) {
-        return COMBAT_TEXT_IDS.contains(id);
+        final boolean[] flags = COMBAT_TEXT_FLAGS;
+        if (id < 0 || id >= flags.length) {
+            // If assets expanded after initial cache build, mark stale and rebuild on next ensureCache().
+            if (CACHE_READY) CACHE_READY = false;
+            return false;
+        }
+        return flags[id];
     }
 
     public static boolean isHealthStatId(final int id) {
-        return HEALTH_STAT_IDS.contains(id);
+        final boolean[] flags = HEALTH_STAT_FLAGS;
+        if (id < 0 || id >= flags.length) {
+            if (CACHE_READY) CACHE_READY = false;
+            return false;
+        }
+        return flags[id];
+    }
+
+    // Kept for compatibility / debugging.
+    public static Set<Integer> getCombatTextIds() {
+        return COMBAT_TEXT_IDS;
+    }
+
+    // Kept for compatibility / debugging.
+    public static Set<Integer> getHealthStatIds() {
+        return HEALTH_STAT_IDS;
     }
 }

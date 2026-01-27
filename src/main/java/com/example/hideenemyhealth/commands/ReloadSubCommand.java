@@ -7,8 +7,6 @@ import com.hypixel.hytale.server.core.command.system.CommandContext;
 import com.hypixel.hytale.server.core.command.system.basecommands.CommandBase;
 import org.checkerframework.checker.nullness.compatqual.NonNullDecl;
 
-import javax.annotation.Nonnull;
-
 /**
  * /hid reload - Reload plugin configuration (admin)
  */
@@ -28,6 +26,7 @@ public class ReloadSubCommand extends CommandBase {
     protected void executeSync(@NonNullDecl CommandContext commandContext) {
         if (!commandContext.sender().hasPermission(HideEnemyHealthPlugin.ADMIN_PERMISSION)) {
             commandContext.sendMessage(Message.raw("Нет прав: " + HideEnemyHealthPlugin.ADMIN_PERMISSION));
+            return;
         }
 
         HideEnemyHealthPlugin.getInstance().reloadConfig();
