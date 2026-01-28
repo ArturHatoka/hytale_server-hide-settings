@@ -54,14 +54,14 @@ public class UISubCommand extends AbstractPlayerCommand {
             @Nonnull World world
     ) {
         if (!context.sender().hasPermission(HideEnemyHealthPlugin.ADMIN_PERMISSION)) {
-            context.sendMessage(Message.raw("Нет прав: " + HideEnemyHealthPlugin.ADMIN_PERMISSION));
+            context.sendMessage(Message.raw("No permission: " + HideEnemyHealthPlugin.ADMIN_PERMISSION));
             return;
         }
 
         try {
             final Player player = store.getComponent(ref, Player.getComponentType());
             if (player == null) {
-                context.sendMessage(Message.raw("Ошибка: Player component не найден."));
+                context.sendMessage(Message.raw("Error: Player component not found."));
                 return;
             }
 
@@ -69,7 +69,7 @@ public class UISubCommand extends AbstractPlayerCommand {
             player.getPageManager().openCustomPage(ref, store, page);
 
         } catch (Exception e) {
-            context.sendMessage(Message.raw("Ошибка открытия UI: " + e.getMessage()));
+            context.sendMessage(Message.raw("Failed to open UI: " + e.getMessage()));
         }
     }
 }
