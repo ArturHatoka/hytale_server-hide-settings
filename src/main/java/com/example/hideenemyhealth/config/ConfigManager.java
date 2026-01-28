@@ -59,7 +59,7 @@ public final class ConfigManager {
 
         } catch (JsonSyntaxException jse) {
             LOGGER.at(Level.WARNING).withCause(jse)
-                    .log("[HideEnemyHealth] Config JSON is malformed. Resetting to defaults: %s", path.toAbsolutePath());
+                    .log("[ServerHideSettings] Config JSON is malformed. Resetting to defaults: %s", path.toAbsolutePath());
             final HideEnemyHealthConfig cfg = new HideEnemyHealthConfig();
             cfg.normalize();
             save(filePath, cfg);
@@ -67,7 +67,7 @@ public final class ConfigManager {
 
         } catch (Exception e) {
             LOGGER.at(Level.WARNING).withCause(e)
-                    .log("[HideEnemyHealth] Failed to load config: %s. Using defaults (not persisted).", path.toAbsolutePath());
+                    .log("[ServerHideSettings] Failed to load config: %s. Using defaults (not persisted).", path.toAbsolutePath());
             final HideEnemyHealthConfig cfg = new HideEnemyHealthConfig();
             cfg.normalize();
             return cfg;
@@ -108,7 +108,7 @@ public final class ConfigManager {
 
         } catch (Exception e) {
             LOGGER.at(Level.WARNING).withCause(e)
-                    .log("[HideEnemyHealth] Failed to save config: %s", path.toAbsolutePath());
+                    .log("[ServerHideSettings] Failed to save config: %s", path.toAbsolutePath());
         }
     }
 }

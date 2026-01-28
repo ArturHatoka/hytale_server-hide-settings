@@ -32,9 +32,9 @@ public class HelpSubCommand extends CommandBase {
      */
     @Override
     protected void executeSync(@NonNullDecl CommandContext commandContext) {
-        commandContext.sendMessage(Message.raw("HideEnemyHealth commands:"));
-        commandContext.sendMessage(Message.raw("  /hid info - показать текущие настройки"));
-        commandContext.sendMessage(Message.raw("  /hid ui - открыть меню настроек (admin, permission: " + HideEnemyHealthPlugin.ADMIN_PERMISSION + ")"));
-        commandContext.sendMessage(Message.raw("  /hid reload - перечитать config (admin)"));
+        commandContext.sendMessage(Message.raw(HideEnemyHealthPlugin.DISPLAY_NAME + " commands:"));
+        commandContext.sendMessage(Message.raw("  /hid info - show current settings"));
+        commandContext.sendMessage(Message.raw("  /hid ui - open the settings dashboard (admin, permission: " + HideEnemyHealthPlugin.ADMIN_PERMISSION + ")"));
+        commandContext.sendMessage(Message.raw("  /hid reload - reload config from disk (admin)"));
     }
 }

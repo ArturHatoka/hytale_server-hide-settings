@@ -28,7 +28,7 @@ public final class UiComponentFieldAccessor {
             f.setAccessible(true);
         } catch (Throwable t) {
             LOGGER.at(Level.WARNING).withCause(t)
-                    .log("[HideEnemyHealth] Failed to access UIComponentList.componentIds via reflection. Plugin will be limited.");
+                    .log("[ServerHideSettings] Failed to access UIComponentList.componentIds via reflection. Plugin will be limited.");
         }
         COMPONENT_IDS_FIELD = f;
     }

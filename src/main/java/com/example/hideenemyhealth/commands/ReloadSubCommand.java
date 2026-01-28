@@ -33,13 +33,13 @@ public class ReloadSubCommand extends CommandBase {
      */
     @Override
     protected void executeSync(@NonNullDecl CommandContext commandContext) {
-        if (!commandContext.sender().hasPermission(HideEnemyHealthPlugin.ADMIN_PERMISSION)) {
-            commandContext.sendMessage(Message.raw("Нет прав: " + HideEnemyHealthPlugin.ADMIN_PERMISSION));
+        if (!(commandContext.sender().hasPermission(HideEnemyHealthPlugin.ADMIN_PERMISSION))) {
+            commandContext.sendMessage(Message.raw("No permission: " + HideEnemyHealthPlugin.ADMIN_PERMISSION));
             return;
         }
 
         HideEnemyHealthPlugin.getInstance().reloadConfig();
         HideEntityUiSystem.refreshLoadedEntities();
-        commandContext.sendMessage(Message.raw("HideEnemyHealth: конфиг перезагружен и применён."));
+        commandContext.sendMessage(Message.raw(HideEnemyHealthPlugin.DISPLAY_NAME + ": config reloaded and applied."));
     }
 }

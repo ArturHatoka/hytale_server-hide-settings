@@ -98,13 +98,13 @@ public final class UiComponentCache {
             CACHE_READY = true;
 
             LOGGER.at(Level.INFO).log(
-                    "[HideEnemyHealth] UI component cache ready (health=%d, combat=%d)",
+                    "[ServerHideSettings] UI component cache ready (health=%d, combat=%d)",
                     health.size(), combat.size()
             );
             return true;
 
         } catch (Throwable t) {
-            LOGGER.at(Level.WARNING).withCause(t).log("[HideEnemyHealth] Failed to build UI component cache");
+            LOGGER.at(Level.WARNING).withCause(t).log("[ServerHideSettings] Failed to build UI component cache");
             return false;
         }
     }

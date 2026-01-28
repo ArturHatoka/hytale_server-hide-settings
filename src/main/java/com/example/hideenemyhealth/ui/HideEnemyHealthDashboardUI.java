@@ -3,6 +3,7 @@ package com.example.hideenemyhealth.ui;
 import com.example.hideenemyhealth.HideEnemyHealthPlugin;
 import com.example.hideenemyhealth.config.HideEnemyHealthConfig;
 import com.example.hideenemyhealth.systems.HideEntityUiSystem;
+import com.example.hideenemyhealth.worldmap.PlayerMapMarkerController;
 import com.hypixel.hytale.codec.Codec;
 import com.hypixel.hytale.codec.KeyedCodec;
 import com.hypixel.hytale.codec.builder.BuilderCodec;
@@ -24,7 +25,7 @@ import com.hypixel.hytale.server.core.util.NotificationUtil;
 import javax.annotation.Nonnull;
 
 /**
- * Admin dashboard UI for HideEnemyHealth.
+ * Admin dashboard UI for Server Hide Settings.
  *
  * <p>UI is driven by a .ui layout file and event bindings.
  * Any state changes are applied server-side to the config and then re-applied to currently loaded entities.</p>
@@ -32,7 +33,7 @@ import javax.annotation.Nonnull;
 public class HideEnemyHealthDashboardUI extends InteractiveCustomUIPage<HideEnemyHealthDashboardUI.UIEventData> {
 
     /** Path to the UI layout asset. */
-    public static final String LAYOUT = "hideenemyhealth/Dashboard.ui";
+    public static final String LAYOUT = "serverhidesettings/Dashboard.ui";
 
     private final PlayerRef playerRef;
 
@@ -63,6 +64,7 @@ public class HideEnemyHealthDashboardUI extends InteractiveCustomUIPage<HideEnem
         bind(evt, "#TogglePlayersDamageButton", "toggle_players_damage");
         bind(evt, "#ToggleNpcsHealthButton", "toggle_npcs_health");
         bind(evt, "#ToggleNpcsDamageButton", "toggle_npcs_damage");
+        bind(evt, "#ToggleMapPlayersButton", "toggle_map_players");
         bind(evt, "#RefreshButton", "refresh");
         bind(evt, "#CloseButton", "close");
 
@@ -93,6 +95,8 @@ public class HideEnemyHealthDashboardUI extends InteractiveCustomUIPage<HideEnem
 
         cmd.set("#ToggleNpcsHealthButton.Text", cfg.getNpcs().hideHealthBar ? "ON" : "OFF");
         cmd.set("#ToggleNpcsDamageButton.Text", cfg.getNpcs().hideDamageNumbers ? "ON" : "OFF");
+
+        cmd.set("#ToggleMapPlayersButton.Text", cfg.getMap().hidePlayerMarkers ? "ON" : "OFF");
     }
 
     /**
@@ -114,8 +118,8 @@ public class HideEnemyHealthDashboardUI extends InteractiveCustomUIPage<HideEnem
             if (player == null || !player.hasPermission(HideEnemyHealthPlugin.ADMIN_PERMISSION)) {
                 NotificationUtil.sendNotification(
                         playerRef.getPacketHandler(),
-                        Message.raw("HideEnemyHealth"),
-                        Message.raw("Нет прав (" + HideEnemyHealthPlugin.ADMIN_PERMISSION + ")"),
+                        Message.raw(HideEnemyHealthPlugin.DISPLAY_NAME),
+                        Message.raw("No permission (" + HideEnemyHealthPlugin.ADMIN_PERMISSION + ")"),
                         NotificationStyle.Warning
                 );
                 return;
@@ -131,6 +135,7 @@ public class HideEnemyHealthDashboardUI extends InteractiveCustomUIPage<HideEnem
         boolean changed = false;
         boolean refreshPlayers = false;
         boolean refreshNpcs = false;
+        boolean refreshMap = false;
 
         switch (data.action) {
             case "toggle_players_health" -> {
@@ -153,11 +158,17 @@ public class HideEnemyHealthDashboardUI extends InteractiveCustomUIPage<HideEnem
                 changed = true;
                 refreshNpcs = true;
             }
+            case "toggle_map_players" -> {
+                cfg.getMap().hidePlayerMarkers = !cfg.getMap().hidePlayerMarkers;
+                changed = true;
+                refreshMap = true;
+            }
             case "refresh" -> {
                 // no config change, just re-apply
                 HideEntityUiSystem.setConfig(cfg);
                 HideEntityUiSystem.refreshLoadedEntities();
-                sendStatus("Применено.");
+                PlayerMapMarkerController.applyToAllLoadedWorlds(cfg);
+                sendStatus("Applied.");
                 return;
             }
             case "close" -> {
@@ -177,6 +188,11 @@ public class HideEnemyHealthDashboardUI extends InteractiveCustomUIPage<HideEnem
         plugin.saveConfig();
         HideEntityUiSystem.setConfig(cfg);
 
+        // Apply map marker changes if requested.
+        if (refreshMap) {
+            PlayerMapMarkerController.applyToAllLoadedWorlds(cfg);
+        }
+
         // Refresh only what changed (players or NPCs). If both flags are false for some reason, refresh all.
         if (refreshPlayers && !refreshNpcs) {
             HideEntityUiSystem.refreshLoadedPlayers();
@@ -189,13 +205,13 @@ public class HideEnemyHealthDashboardUI extends InteractiveCustomUIPage<HideEnem
         // Update UI widgets
         final UICommandBuilder cmd = new UICommandBuilder();
         syncUI(cmd);
-        cmd.set("#StatusText.Text", "Сохранено и применено.");
+        cmd.set("#StatusText.Text", "Saved and applied.");
         this.sendUpdate(cmd, false);
 
         NotificationUtil.sendNotification(
                 playerRef.getPacketHandler(),
-                Message.raw("HideEnemyHealth"),
-                Message.raw("Сохранено и применено."),
+                Message.raw(HideEnemyHealthPlugin.DISPLAY_NAME),
+                Message.raw("Saved and applied."),
                 NotificationStyle.Success
         );
     }

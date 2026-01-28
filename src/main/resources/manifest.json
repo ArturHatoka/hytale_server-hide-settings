@@ -1,8 +1,8 @@
 {
   "Group": "com.example",
-  "Name": "Hide Enemy Health",
-  "Version": "1.3.0",
-  "Description": "Hides overhead health bars (and optionally damage numbers) for players/NPCs. Admin-controlled via in-game UI.",
+  "Name": "Server Hide Settings",
+  "Version": "1.4.0",
+  "Description": "Server-side UI hide settings: overhead HP bars, damage numbers, and player map markers. Admin-controlled via in-game UI.",
   "Authors": [
     {
       "Name": "Hatoka"

@@ -1,7 +1,7 @@
-// HideEnemyHealth Dashboard UI
+// Server Hide Settings Dashboard UI
 $Common = "Common.ui";
 
-// Button styles (по шаблону)
+// Button styles (template)
 @PrimaryButton = TextButtonStyle(
   Default: (Background: #3a7bd5, LabelStyle: (FontSize: 14, TextColor: #ffffff, RenderBold: true, HorizontalAlignment: Center, VerticalAlignment: Center)),
   Hovered: (Background: #4a8be5, LabelStyle: (FontSize: 14, TextColor: #ffffff, RenderBold: true, HorizontalAlignment: Center, VerticalAlignment: Center)),
@@ -14,7 +14,7 @@ $Common = "Common.ui";
   Pressed: (Background: #1b2532, LabelStyle: (FontSize: 14, TextColor: #96a9be, RenderBold: true, HorizontalAlignment: Center, VerticalAlignment: Center))
 );
 
-// Root overlay (центрирует панель)
+// Root overlay (centers panel)
 Group #Root {
   Anchor: (Left: 0, Right: 0, Top: 0, Bottom: 0);
   LayoutMode: Center;
@@ -29,14 +29,14 @@ Group #Root {
 
     // Title
     Label #TitleText {
-      Text: "HideEnemyHealth";
+      Text: "Server Hide Settings";
       Anchor: (Height: 44);
       Style: (FontSize: 24, TextColor: #ffffff, HorizontalAlignment: Center, RenderBold: true);
     }
 
     // Subtitle
     Label #StatusText {
-      Text: "Настройки (только админы)";
+      Text: "Settings (admins only)";
       Anchor: (Height: 28);
       Style: (FontSize: 16, TextColor: #96a9be, HorizontalAlignment: Center);
     }
@@ -48,7 +48,7 @@ Group #Root {
     // Settings list
     Group #SettingsPanel {
       LayoutMode: Top;
-      Anchor: (Height: 340);
+      Anchor: (Height: 400);
 
       // Row helper: each row is Height: 48 + spacer
       Group {
@@ -56,7 +56,7 @@ Group #Root {
         Anchor: (Height: 48);
 
         Label {
-          Text: "Игроки: скрыть полоску HP";
+          Text: "Players: Hide HP bar";
           Anchor: (Height: 32);
           Style: (FontSize: 16, TextColor: #ffffff, HorizontalAlignment: Start);
           FlexWeight: 1;
@@ -76,7 +76,7 @@ Group #Root {
         Anchor: (Height: 48);
 
         Label {
-          Text: "Игроки: скрыть цифры урона";
+          Text: "Players: Hide damage numbers";
           Anchor: (Height: 32);
           Style: (FontSize: 16, TextColor: #ffffff, HorizontalAlignment: Start);
           FlexWeight: 1;
@@ -96,7 +96,7 @@ Group #Root {
         Anchor: (Height: 48);
 
         Label {
-          Text: "NPC: скрыть полоску HP";
+          Text: "NPCs: Hide HP bar";
           Anchor: (Height: 32);
           Style: (FontSize: 16, TextColor: #ffffff, HorizontalAlignment: Start);
           FlexWeight: 1;
@@ -116,7 +116,7 @@ Group #Root {
         Anchor: (Height: 48);
 
         Label {
-          Text: "NPC: скрыть цифры урона";
+          Text: "NPCs: Hide damage numbers";
           Anchor: (Height: 32);
           Style: (FontSize: 16, TextColor: #ffffff, HorizontalAlignment: Start);
           FlexWeight: 1;
@@ -131,8 +131,30 @@ Group #Root {
 
       Group { Anchor: (Height: 14); }
 
+Group { Anchor: (Height: 10); }
+
+Group {
+  LayoutMode: Center;
+  Anchor: (Height: 48);
+
+  Label {
+    Text: "Map: Hide player markers";
+    Anchor: (Height: 32);
+    Style: (FontSize: 16, TextColor: #ffffff, HorizontalAlignment: Start);
+    FlexWeight: 1;
+  }
+
+  TextButton #ToggleMapPlayersButton {
+    Text: "OFF";
+    Anchor: (Width: 160, Height: 36);
+    Style: @PrimaryButton;
+  }
+}
+
+Group { Anchor: (Height: 14); }
+
       Label #HintText {
-        Text: "Изменения применяются сразу (для загруженных сущностей).";
+        Text: "Changes apply immediately (for loaded entities).";
         Anchor: (Height: 22);
         Style: (FontSize: 12, TextColor: #6e7da1, HorizontalAlignment: Center);
       }
@@ -147,7 +169,7 @@ Group #Root {
       Anchor: (Height: 56);
 
       TextButton #RefreshButton {
-        Text: "Применить / Обновить";
+        Text: "Apply / Refresh";
         Anchor: (Width: 260, Height: 44);
         Style: @PrimaryButton;
       }
@@ -155,7 +177,7 @@ Group #Root {
       Group { Anchor: (Width: 16); }
 
       TextButton #CloseButton {
-        Text: "Закрыть";
+        Text: "Close";
         Anchor: (Width: 260, Height: 44);
         Style: @SecondaryButton;
       }

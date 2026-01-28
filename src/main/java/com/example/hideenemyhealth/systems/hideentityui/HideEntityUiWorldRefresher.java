@@ -170,7 +170,7 @@ public final class HideEntityUiWorldRefresher {
                 runOnWorldThread(world, () -> perWorldTask.accept(world));
             }
         } catch (Throwable t) {
-            LOGGER.at(Level.WARNING).withCause(t).log("[HideEnemyHealth] World iteration failed");
+            LOGGER.at(Level.WARNING).withCause(t).log("[ServerHideSettings] World iteration failed");
         }
     }
 
@@ -209,12 +209,12 @@ public final class HideEntityUiWorldRefresher {
             }
         } catch (Throwable t) {
             LOGGER.at(Level.WARNING).withCause(t)
-                    .log("[HideEnemyHealth] Failed to refresh players in world: %s", safeWorldName(world));
+                    .log("[ServerHideSettings] Failed to refresh players in world: %s", safeWorldName(world));
         } finally {
             if (log) {
                 final long ms = (System.nanoTime() - t0) / 1_000_000L;
                 LOGGER.at(Level.INFO).log(
-                        "[HideEnemyHealth][Refresh] world=%s players visited=%d changed=%d timeMs=%d",
+                        "[ServerHideSettings][Refresh] world=%s players visited=%d changed=%d timeMs=%d",
                         safeWorldName(world), visited, changed, ms
                 );
             }
@@ -236,7 +236,7 @@ public final class HideEntityUiWorldRefresher {
         if (npcRefs == null) {
             if (log) {
                 LOGGER.at(Level.INFO).log(
-                        "[HideEnemyHealth][Refresh] world=%s npcs skipped (API not available)",
+                        "[ServerHideSettings][Refresh] world=%s npcs skipped (API not available)",
                         safeWorldName(world)
                 );
             }
@@ -264,12 +264,12 @@ public final class HideEntityUiWorldRefresher {
             }
         } catch (Throwable t) {
             LOGGER.at(Level.FINE).withCause(t)
-                    .log("[HideEnemyHealth] NPC refresh skipped due to API differences (world=%s)", safeWorldName(world));
+                    .log("[ServerHideSettings] NPC refresh skipped due to API differences (world=%s)", safeWorldName(world));
         } finally {
             if (log) {
                 final long ms = (System.nanoTime() - t0) / 1_000_000L;
                 LOGGER.at(Level.INFO).log(
-                        "[HideEnemyHealth][Refresh] world=%s npcs visited=%d changed=%d timeMs=%d",
+                        "[ServerHideSettings][Refresh] world=%s npcs visited=%d changed=%d timeMs=%d",
                         safeWorldName(world), visited, changed, ms
                 );
             }
@@ -344,7 +344,7 @@ public final class HideEntityUiWorldRefresher {
         if (log) {
             final long ms = (System.nanoTime() - t0) / 1_000_000L;
             LOGGER.at(Level.INFO).log(
-                    "[HideEnemyHealth][BaselineGC] world=%s stores=%d seenPlayers=%d seenNpcs=%d removed=%d timeMs=%d",
+                    "[ServerHideSettings][BaselineGC] world=%s stores=%d seenPlayers=%d seenNpcs=%d removed=%d timeMs=%d",
                     safeWorldName(world), storeIds.count, seenPlayers, seenNpcs, removed, ms
             );
         }
@@ -529,7 +529,7 @@ public final class HideEntityUiWorldRefresher {
                 return;
             } catch (Throwable t) {
                 LOGGER.at(Level.WARNING).withCause(t)
-                        .log("[HideEnemyHealth] World.execute failed (world=%s)", safeWorldName(world));
+                        .log("[ServerHideSettings] World.execute failed (world=%s)", safeWorldName(world));
             }
         }
 
@@ -539,7 +539,7 @@ public final class HideEntityUiWorldRefresher {
         // This mirrors the previous behavior that the plugin relied on.
         if (EXECUTE_FALLBACK_WARNED.putIfAbsent(worldClass, Boolean.TRUE) == null) {
             LOGGER.at(Level.WARNING).log(
-                    "[HideEnemyHealth] World.execute(Runnable) not accessible on %s; running refresh task directly (may be unsafe)",
+                    "[ServerHideSettings] World.execute(Runnable) not accessible on %s; running refresh task directly (may be unsafe)",
                     worldClass.getName()
             );
         }
@@ -548,7 +548,7 @@ public final class HideEntityUiWorldRefresher {
             task.run();
         } catch (Throwable t) {
             LOGGER.at(Level.WARNING).withCause(t)
-                    .log("[HideEnemyHealth] Fallback refresh execution failed (world=%s)", safeWorldName(world));
+                    .log("[ServerHideSettings] Fallback refresh execution failed (world=%s)", safeWorldName(world));
         }
     }
 
@@ -598,7 +598,7 @@ public final class HideEntityUiWorldRefresher {
             // Log only once per class.
             if (missing.putIfAbsent(clazz, Boolean.TRUE) == null) {
                 LOGGER.at(Level.FINE).log(
-                        "[HideEnemyHealth] %s.%s(...) not available; skipping that refresh path.",
+                        "[ServerHideSettings] %s.%s(...) not available; skipping that refresh path.",
                         clazz.getSimpleName(), name
                 );
             }
@@ -607,7 +607,7 @@ public final class HideEntityUiWorldRefresher {
         } catch (Throwable t) {
             if (missing.putIfAbsent(clazz, Boolean.TRUE) == null) {
                 LOGGER.at(Level.FINE).withCause(t)
-                        .log("[HideEnemyHealth] Failed to reflect %s.%s(...)", clazz.getSimpleName(), name);
+                        .log("[ServerHideSettings] Failed to reflect %s.%s(...)", clazz.getSimpleName(), name);
             }
             return null;
         }
