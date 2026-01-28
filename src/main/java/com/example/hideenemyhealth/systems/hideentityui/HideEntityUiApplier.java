@@ -1,9 +1,12 @@
 package com.example.hideenemyhealth.systems.hideentityui;
 
+import com.example.hideenemyhealth.HideEnemyHealthPlugin;
 import com.example.hideenemyhealth.config.HideEnemyHealthConfig;
+import com.hypixel.hytale.component.Component;
 import com.hypixel.hytale.component.CommandBuffer;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
+import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.hypixel.hytale.server.core.modules.entityui.UIComponentList;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
@@ -11,7 +14,13 @@ import com.hypixel.hytale.server.npc.entities.NPCEntity;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.Arrays;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.logging.Level;
 
 /**
  * Applies the HideEnemyHealth configuration to an entity by rewriting its {@link UIComponentList}.
@@ -25,6 +34,9 @@ import java.util.Arrays;
  * </p>
  */
 public final class HideEntityUiApplier {
+
+    private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
+    private static final AtomicBoolean WARNED_DIRECT_WRITE_COPY_FAILED = new AtomicBoolean(false);
 
     private HideEntityUiApplier() {
     }
@@ -130,8 +142,9 @@ public final class HideEntityUiApplier {
         }
 
         try {
-            UiComponentFieldAccessor.setComponentIds(list, desired);
-            putComponent(entityRef, store, buffer, list);
+            final UIComponentList writable = prepareUiListForWrite(list, buffer);
+            UiComponentFieldAccessor.setComponentIds(writable, desired);
+            putComponent(entityRef, store, buffer, writable);
             return true;
         } catch (Throwable t) {
             // Failed to write (store may be in a transient state). Keep baseline.
@@ -191,14 +204,100 @@ public final class HideEntityUiApplier {
         }
 
         try {
-            UiComponentFieldAccessor.setComponentIds(list, baseline.clone());
-            putComponent(entityRef, store, buffer, list);
+            final UIComponentList writable = prepareUiListForWrite(list, buffer);
+            UiComponentFieldAccessor.setComponentIds(writable, baseline.clone());
+            putComponent(entityRef, store, buffer, writable);
             EntityUiBaselineCache.remove(key);
             return true;
         } catch (Throwable ignored) {
             // Keep baseline in cache if restore failed.
             return false;
         }
+    }
+
+    /**
+     * Prepare a {@link UIComponentList} instance that is safe to write back to the store.
+     *
+     * <p>When we update entities from an ECS callback, we use {@link CommandBuffer#putComponent} and the engine
+     * is already in a "write" context.
+     *
+     * <p>When we refresh from commands / UI (outside ECS iteration), we write directly via
+     * {@link Store#putComponent}. On some builds this can be sensitive to writing back the <b>same</b> component
+     * instance we read (especially if the store uses identity-based change detection).
+     *
+     * <p>To keep refresh working for already-spawned entities, we attempt to clone/copy the component so the
+     * store sees a distinct instance.
+     */
+    @Nonnull
+    private static UIComponentList prepareUiListForWrite(@Nonnull final UIComponentList current,
+                                                        @Nullable final CommandBuffer<EntityStore> buffer) {
+        if (buffer != null) return current;
+
+        final @Nullable UIComponentList cloned = tryCloneOrCopy(current);
+        if (cloned != null) return cloned;
+
+        if (WARNED_DIRECT_WRITE_COPY_FAILED.compareAndSet(false, true)) {
+            LOGGER.at(Level.WARNING).log(
+                    "%s Could not clone/copy UIComponentList for direct Store.putComponent writes. " +
+                            "If your server build relies on identity-based change tracking, refreshing UI " +
+                            "for already-spawned entities may not work.",
+                    HideEnemyHealthPlugin.LOG_PREFIX
+            );
+        }
+        return current;
+    }
+
+    /**
+     * Best-effort deep-ish copy for {@link UIComponentList}.
+     *
+     * <p>We first try the standard ECS {@link Component#clone()} contract.
+     * If that fails, we attempt reflective no-arg construction and shallow field copy.</p>
+     */
+    @Nullable
+    private static UIComponentList tryCloneOrCopy(@Nonnull final UIComponentList current) {
+        // 1) ECS contract: components are cloneable (preferred).
+        try {
+            if (current instanceof Component<?>) {
+                final Object cloned = ((Component<?>) current).clone();
+                if (cloned instanceof UIComponentList ui && ui != current) {
+                    return ui;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+
+        // 2) Reflective clone() (covers cases where Component is shaded / classloader oddities).
+        try {
+            final Method m = current.getClass().getDeclaredMethod("clone");
+            m.setAccessible(true);
+            final Object cloned = m.invoke(current);
+            if (cloned instanceof UIComponentList ui && ui != current) {
+                return ui;
+            }
+        } catch (Throwable ignored) {
+        }
+
+        // 3) Last resort: no-arg ctor + shallow copy of non-static fields.
+        try {
+            final Constructor<?> ctor = current.getClass().getDeclaredConstructor();
+            ctor.setAccessible(true);
+            final Object created = ctor.newInstance();
+            if (!(created instanceof UIComponentList ui)) return null;
+
+            Class<?> c = current.getClass();
+            while (c != null && c != Object.class) {
+                for (Field f : c.getDeclaredFields()) {
+                    if (Modifier.isStatic(f.getModifiers())) continue;
+                    f.setAccessible(true);
+                    f.set(ui, f.get(current));
+                }
+                c = c.getSuperclass();
+            }
+            return ui;
+        } catch (Throwable ignored) {
+        }
+
+        return null;
     }
 
     /**

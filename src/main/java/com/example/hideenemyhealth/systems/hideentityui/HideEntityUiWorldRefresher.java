@@ -4,10 +4,13 @@ import com.example.hideenemyhealth.config.HideEnemyHealthConfig;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.logger.HytaleLogger;
+import com.hypixel.hytale.server.core.entity.entities.Player;
+import com.hypixel.hytale.server.core.modules.entityui.UIComponentList;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.Universe;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
+import com.hypixel.hytale.server.npc.entities.NPCEntity;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -189,6 +192,40 @@ public final class HideEntityUiWorldRefresher {
         final HideEnemyHealthConfig cfg = HideEntityUiConfigRegistry.getConfig();
         final boolean log = cfg.debug != null && cfg.debug.logRefreshStats;
         final long t0 = log ? System.nanoTime() : 0L;
+
+        // Preferred path: iterate via the world's EntityStore using ECS chunk iteration.
+        // This gives us a CommandBuffer, which is the most reliable way to apply component updates.
+        final Store<EntityStore> worldStore = tryGetWorldStore(world);
+        if (worldStore != null) {
+            final int[] stats = new int[2]; // [0]=visited, [1]=changed
+            try {
+                worldStore.forEachChunk(Player.getComponentType(), (archetypeChunk, commandBuffer) -> {
+                    for (int i = 0; i < archetypeChunk.size(); i++) {
+                        final Ref<EntityStore> ref = archetypeChunk.getReferenceTo(i);
+                        if (ref == null || !ref.isValid()) continue;
+
+                        stats[0]++;
+                        if (HideEntityUiApplier.applyForRefAndReport(ref, worldStore, commandBuffer, Boolean.FALSE)) {
+                            stats[1]++;
+                        }
+                    }
+                });
+            } catch (Throwable t) {
+                LOGGER.at(Level.WARNING).withCause(t)
+                        .log("[ServerHideSettings] Failed to refresh players in world: %s", safeWorldName(world));
+            } finally {
+                if (log) {
+                    final long ms = (System.nanoTime() - t0) / 1_000_000L;
+                    LOGGER.at(Level.INFO).log(
+                            "[ServerHideSettings][Refresh] world=%s players visited=%d changed=%d timeMs=%d",
+                            safeWorldName(world), stats[0], stats[1], ms
+                    );
+                }
+            }
+            return;
+        }
+
+        // Fallback path: iterate via public player refs and write directly.
         int visited = 0;
         int changed = 0;
         try {
@@ -231,6 +268,40 @@ public final class HideEntityUiWorldRefresher {
         final HideEnemyHealthConfig cfg = HideEntityUiConfigRegistry.getConfig();
         final boolean log = cfg.debug != null && cfg.debug.logRefreshStats;
         final long t0 = log ? System.nanoTime() : 0L;
+
+        // Preferred path: iterate via ECS chunk iteration over NPCEntity component.
+        final Store<EntityStore> worldStore = tryGetWorldStore(world);
+        if (worldStore != null) {
+            final int[] stats = new int[2]; // [0]=visited, [1]=changed
+            try {
+                worldStore.forEachChunk(NPCEntity.getComponentType(), (archetypeChunk, commandBuffer) -> {
+                    for (int i = 0; i < archetypeChunk.size(); i++) {
+                        final Ref<EntityStore> ref = archetypeChunk.getReferenceTo(i);
+                        if (ref == null || !ref.isValid()) continue;
+
+                        // Fast skip: NPC archetypes without UIComponentList cannot be modified.
+                        if (archetypeChunk.getComponent(i, UIComponentList.getComponentType()) == null) continue;
+
+                        stats[0]++;
+                        if (HideEntityUiApplier.applyForRefAndReport(ref, worldStore, commandBuffer, Boolean.TRUE)) {
+                            stats[1]++;
+                        }
+                    }
+                });
+            } catch (Throwable t) {
+                LOGGER.at(Level.WARNING).withCause(t)
+                        .log("[ServerHideSettings] Failed to refresh NPCs in world: %s", safeWorldName(world));
+            } finally {
+                if (log) {
+                    final long ms = (System.nanoTime() - t0) / 1_000_000L;
+                    LOGGER.at(Level.INFO).log(
+                            "[ServerHideSettings][Refresh] world=%s npcs visited=%d changed=%d timeMs=%d",
+                            safeWorldName(world), stats[0], stats[1], ms
+                    );
+                }
+            }
+            return;
+        }
 
         final Iterable<?> npcRefs = getNpcRefs(world);
         if (npcRefs == null) {
@@ -290,49 +361,83 @@ public final class HideEntityUiWorldRefresher {
         final LongHashSet aliveKeys = new LongHashSet(256);
         final IntHashSet storeIds = new IntHashSet(8);
 
-        int seenPlayers = 0;
-        int seenNpcs = 0;
+        final int[] seen = new int[2]; // [0]=players, [1]=npcs
 
-        // Players are accessible via world.getPlayerRefs().
-        try {
-            for (PlayerRef playerRef : world.getPlayerRefs()) {
-                if (playerRef == null) continue;
-                final Ref<EntityStore> ref = safeGetPlayerEntityRef(playerRef);
-                if (ref == null || !ref.isValid()) continue;
+        // Preferred path: gather alive keys via the world's EntityStore.
+        final Store<EntityStore> worldStore = tryGetWorldStore(world);
+        if (worldStore != null) {
+            try {
+                worldStore.forEachChunk(Player.getComponentType(), (archetypeChunk, commandBuffer) -> {
+                    for (int i = 0; i < archetypeChunk.size(); i++) {
+                        final Ref<EntityStore> ref = archetypeChunk.getReferenceTo(i);
+                        if (ref == null || !ref.isValid()) continue;
 
-                final long key = EntityUiBaselineCache.entityKey(ref);
-                aliveKeys.add(key);
-                storeIds.add(EntityUiBaselineCache.storeIdFromKey(key));
-                seenPlayers++;
+                        final long key = EntityUiBaselineCache.entityKey(ref);
+                        aliveKeys.add(key);
+                        storeIds.add(EntityUiBaselineCache.storeIdFromKey(key));
+                        seen[0]++;
+                    }
+                });
+
+                worldStore.forEachChunk(NPCEntity.getComponentType(), (archetypeChunk, commandBuffer) -> {
+                    for (int i = 0; i < archetypeChunk.size(); i++) {
+                        final Ref<EntityStore> ref = archetypeChunk.getReferenceTo(i);
+                        if (ref == null || !ref.isValid()) continue;
+
+                        final long key = EntityUiBaselineCache.entityKey(ref);
+                        aliveKeys.add(key);
+                        storeIds.add(EntityUiBaselineCache.storeIdFromKey(key));
+                        seen[1]++;
+                    }
+                });
+            } catch (Throwable ignored) {
+                // If store iteration fails for any reason, fall back to best-effort API methods below.
             }
-        } catch (Throwable ignored) {
         }
 
-        // NPCs may be unavailable depending on server build.
-        final Iterable<?> npcRefs = getNpcRefs(world);
-        if (npcRefs != null) {
+        // Fallback path: Players are accessible via world.getPlayerRefs().
+        if (storeIds.isEmpty()) {
             try {
-                for (Object npcRefLike : npcRefs) {
-                    if (npcRefLike == null) continue;
-                    final Ref<EntityStore> ref = coerceToEntityRef(npcRefLike);
+                for (PlayerRef playerRef : world.getPlayerRefs()) {
+                    if (playerRef == null) continue;
+                    final Ref<EntityStore> ref = safeGetPlayerEntityRef(playerRef);
                     if (ref == null || !ref.isValid()) continue;
 
                     final long key = EntityUiBaselineCache.entityKey(ref);
                     aliveKeys.add(key);
                     storeIds.add(EntityUiBaselineCache.storeIdFromKey(key));
-                    seenNpcs++;
+                    seen[0]++;
                 }
             } catch (Throwable ignored) {
+            }
+
+            // NPCs may be unavailable depending on server build.
+            final Iterable<?> npcRefs = getNpcRefs(world);
+            if (npcRefs != null) {
+                try {
+                    for (Object npcRefLike : npcRefs) {
+                        if (npcRefLike == null) continue;
+                        final Ref<EntityStore> ref = coerceToEntityRef(npcRefLike);
+                        if (ref == null || !ref.isValid()) continue;
+
+                        final long key = EntityUiBaselineCache.entityKey(ref);
+                        aliveKeys.add(key);
+                        storeIds.add(EntityUiBaselineCache.storeIdFromKey(key));
+                        seen[1]++;
+                    }
+                } catch (Throwable ignored) {
+                }
             }
         }
 
         // We can only sweep stores for which we observed at least one entity ref.
         if (storeIds.isEmpty()) return;
 
-        int sweepKindsMask = EntityUiBaselineCache.KIND_PLAYER;
-        if (seenNpcs > 0) {
-            sweepKindsMask |= EntityUiBaselineCache.KIND_NPC;
-        }
+        // If we can see the world's EntityStore, it is safe to sweep both kinds.
+        // On fallback paths, keep the previous conservative behavior.
+        final int sweepKindsMask = (worldStore != null)
+                ? (EntityUiBaselineCache.KIND_PLAYER | EntityUiBaselineCache.KIND_NPC)
+                : (EntityUiBaselineCache.KIND_PLAYER | (seen[1] > 0 ? EntityUiBaselineCache.KIND_NPC : 0));
 
         int removed = 0;
         for (int i = 0; i < storeIds.capacity(); i++) {
@@ -345,7 +450,7 @@ public final class HideEntityUiWorldRefresher {
             final long ms = (System.nanoTime() - t0) / 1_000_000L;
             LOGGER.at(Level.INFO).log(
                     "[ServerHideSettings][BaselineGC] world=%s stores=%d seenPlayers=%d seenNpcs=%d removed=%d timeMs=%d",
-                    safeWorldName(world), storeIds.count(), seenPlayers, seenNpcs, removed, ms
+                    safeWorldName(world), storeIds.count(), seen[0], seen[1], removed, ms
             );
         }
     }
@@ -485,6 +590,23 @@ public final class HideEntityUiWorldRefresher {
             x *= 0x846ca68b;
             x ^= (x >>> 16);
             return x;
+        }
+    }
+
+    /**
+     * Try to obtain the ECS {@link Store} for a world.
+     *
+     * <p>The public server API exposes {@code world.getEntityStore()}, and then {@code entityStore.getStore()}.
+     * We keep this in a helper so refresh paths can fall back to older/reflection-based methods if needed.</p>
+     */
+    @Nullable
+    private static Store<EntityStore> tryGetWorldStore(@Nonnull final World world) {
+        try {
+            final EntityStore entityStore = world.getEntityStore();
+            if (entityStore == null) return null;
+            return entityStore.getStore();
+        } catch (Throwable ignored) {
+            return null;
         }
     }
 

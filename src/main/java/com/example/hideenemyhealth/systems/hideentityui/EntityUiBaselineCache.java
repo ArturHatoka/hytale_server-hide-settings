@@ -154,11 +154,7 @@ public final class EntityUiBaselineCache {
      */
     private static final class BaselineEntry {
         final int[] baselineIds;
-        volatile byte kind;
-
-        BaselineEntry(@Nonnull final int[] baselineIds, final byte kind) {
+        volatile byte kind;        BaselineEntry(@Nonnull final int[] baselineIds, final byte kind) {
             this.baselineIds = baselineIds;
-            this.kind = kind;
-        }
-    }
+            this.kind = kind;        }    }
 }
