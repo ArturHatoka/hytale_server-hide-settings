@@ -6,6 +6,7 @@ import com.example.hideenemyhealth.config.HideEnemyHealthConfig;
 import com.example.hideenemyhealth.systems.HideEntityUiSystem;
 import com.example.hideenemyhealth.systems.hideentityui.EntityUiBaselineCache;
 import com.example.hideenemyhealth.systems.hideentityui.UiComponentCache;
+import com.example.hideenemyhealth.worldmap.PlayerMapMarkerController;
 import com.hypixel.hytale.event.EventRegistry;
 import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.server.core.plugin.JavaPlugin;
@@ -94,6 +95,12 @@ public final class HideEnemyHealthPlugin extends JavaPlugin {
         config = configManager.loadOrCreate(configFile);
         HideEntityUiSystem.setConfig(config);
 
+        // Apply map marker settings to loaded worlds.
+        try {
+            PlayerMapMarkerController.applyToAllLoadedWorlds(config);
+        } catch (Throwable ignored) {
+        }
+
         // Background jobs are config-driven (debug.baselineGc.enabled etc.).
         restartBackgroundJobs();
     }
@@ -120,6 +127,12 @@ public final class HideEnemyHealthPlugin extends JavaPlugin {
 
         // Apply to already loaded entities
         HideEntityUiSystem.refreshLoadedEntities();
+
+        // Apply map marker settings to already loaded worlds
+        try {
+            PlayerMapMarkerController.applyToAllLoadedWorlds(getConfig());
+        } catch (Throwable ignored) {
+        }
 
         LOGGER.at(Level.INFO).log("[HideEnemyHealth] Setup complete!");
     }
@@ -148,6 +161,12 @@ public final class HideEnemyHealthPlugin extends JavaPlugin {
             saveConfig();
         } catch (Throwable t) {
             LOGGER.at(Level.WARNING).withCause(t).log("[HideEnemyHealth] Failed to persist config on shutdown");
+        }
+
+        // Best-effort restore map marker providers (avoid leaving overrides on hot reload).
+        try {
+            PlayerMapMarkerController.restoreAllLoadedWorlds();
+        } catch (Throwable ignored) {
         }
 
         // Defensive cleanup to avoid stale static state after hot reload.
@@ -253,9 +272,12 @@ public final class HideEnemyHealthPlugin extends JavaPlugin {
     private void registerListeners() {
         final EventRegistry eventBus = getEventRegistry();
         try {
+            // World hooks: apply player map-marker settings for new worlds.
+            PlayerMapMarkerController.register(eventBus);
+
             // Uncomment if you need it:
             // new com.example.hideenemyhealth.listeners.PlayerListener().register(eventBus);
-            LOGGER.at(Level.FINE).log("[HideEnemyHealth] Listeners skipped (not required)");
+            LOGGER.at(Level.FINE).log("[HideEnemyHealth] Listeners registered");
         } catch (Throwable t) {
             LOGGER.at(Level.WARNING).withCause(t).log("[HideEnemyHealth] Failed to register listeners");
         }

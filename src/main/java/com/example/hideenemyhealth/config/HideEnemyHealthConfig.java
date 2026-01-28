@@ -23,6 +23,10 @@ public class HideEnemyHealthConfig {
     @SerializedName("npcs")
     public TargetSettings npcs = TargetSettings.defaultsForNpcs();
 
+    /** World map / minimap related settings. */
+    @SerializedName("map")
+    public MapSettings map = new MapSettings();
+
     /** Optional debug / maintenance settings (disabled by default). */
     @SerializedName("debug")
     public DebugSettings debug = new DebugSettings();
@@ -45,12 +49,22 @@ public class HideEnemyHealthConfig {
         return npcs;
     }
 
+/**
+ * @return non-null map settings (creates defaults if missing)
+ */
+@Nonnull
+public MapSettings getMap() {
+    if (map == null) map = new MapSettings();
+    return map;
+}
+
     /**
      * Normalize config after load: ensure nested objects are never null.
      */
     public void normalize() {
         if (players == null) players = TargetSettings.defaultsForPlayers();
         if (npcs == null) npcs = TargetSettings.defaultsForNpcs();
+        if (map == null) map = new MapSettings();
 
         if (debug == null) debug = new DebugSettings();
         debug.normalize();
@@ -107,6 +121,21 @@ public class HideEnemyHealthConfig {
             if (intervalSeconds < 30) intervalSeconds = 30;
         }
     }
+
+/**
+ * World map (minimap / map screen) related settings.
+ */
+public static final class MapSettings {
+
+    /**
+     * If true, hides player markers (icons) on the world map by overriding the built-in
+     * {@code "playerIcons"} marker provider.
+     *
+     * <p>This does not affect objective markers or other map layers.</p>
+     */
+    @SerializedName("hidePlayerMarkers")
+    public boolean hidePlayerMarkers = false;
+}
 
     /**
      * Target-specific settings (players or NPCs).

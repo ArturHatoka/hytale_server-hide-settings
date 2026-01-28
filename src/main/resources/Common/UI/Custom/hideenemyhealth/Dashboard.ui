@@ -48,7 +48,7 @@ Group #Root {
     // Settings list
     Group #SettingsPanel {
       LayoutMode: Top;
-      Anchor: (Height: 340);
+      Anchor: (Height: 400);
 
       // Row helper: each row is Height: 48 + spacer
       Group {
@@ -130,6 +130,28 @@ Group #Root {
       }
 
       Group { Anchor: (Height: 14); }
+
+Group { Anchor: (Height: 10); }
+
+Group {
+  LayoutMode: Center;
+  Anchor: (Height: 48);
+
+  Label {
+    Text: "Карта: скрыть маркеры игроков";
+    Anchor: (Height: 32);
+    Style: (FontSize: 16, TextColor: #ffffff, HorizontalAlignment: Start);
+    FlexWeight: 1;
+  }
+
+  TextButton #ToggleMapPlayersButton {
+    Text: "OFF";
+    Anchor: (Width: 160, Height: 36);
+    Style: @PrimaryButton;
+  }
+}
+
+Group { Anchor: (Height: 14); }
 
       Label #HintText {
         Text: "Изменения применяются сразу (для загруженных сущностей).";

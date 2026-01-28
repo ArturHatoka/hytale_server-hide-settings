@@ -3,6 +3,7 @@ package com.example.hideenemyhealth.ui;
 import com.example.hideenemyhealth.HideEnemyHealthPlugin;
 import com.example.hideenemyhealth.config.HideEnemyHealthConfig;
 import com.example.hideenemyhealth.systems.HideEntityUiSystem;
+import com.example.hideenemyhealth.worldmap.PlayerMapMarkerController;
 import com.hypixel.hytale.codec.Codec;
 import com.hypixel.hytale.codec.KeyedCodec;
 import com.hypixel.hytale.codec.builder.BuilderCodec;
@@ -63,6 +64,7 @@ public class HideEnemyHealthDashboardUI extends InteractiveCustomUIPage<HideEnem
         bind(evt, "#TogglePlayersDamageButton", "toggle_players_damage");
         bind(evt, "#ToggleNpcsHealthButton", "toggle_npcs_health");
         bind(evt, "#ToggleNpcsDamageButton", "toggle_npcs_damage");
+        bind(evt, "#ToggleMapPlayersButton", "toggle_map_players");
         bind(evt, "#RefreshButton", "refresh");
         bind(evt, "#CloseButton", "close");
 
@@ -93,6 +95,8 @@ public class HideEnemyHealthDashboardUI extends InteractiveCustomUIPage<HideEnem
 
         cmd.set("#ToggleNpcsHealthButton.Text", cfg.getNpcs().hideHealthBar ? "ON" : "OFF");
         cmd.set("#ToggleNpcsDamageButton.Text", cfg.getNpcs().hideDamageNumbers ? "ON" : "OFF");
+
+        cmd.set("#ToggleMapPlayersButton.Text", cfg.getMap().hidePlayerMarkers ? "ON" : "OFF");
     }
 
     /**
@@ -131,6 +135,7 @@ public class HideEnemyHealthDashboardUI extends InteractiveCustomUIPage<HideEnem
         boolean changed = false;
         boolean refreshPlayers = false;
         boolean refreshNpcs = false;
+        boolean refreshMap = false;
 
         switch (data.action) {
             case "toggle_players_health" -> {
@@ -153,10 +158,16 @@ public class HideEnemyHealthDashboardUI extends InteractiveCustomUIPage<HideEnem
                 changed = true;
                 refreshNpcs = true;
             }
+            case "toggle_map_players" -> {
+                cfg.getMap().hidePlayerMarkers = !cfg.getMap().hidePlayerMarkers;
+                changed = true;
+                refreshMap = true;
+            }
             case "refresh" -> {
                 // no config change, just re-apply
                 HideEntityUiSystem.setConfig(cfg);
                 HideEntityUiSystem.refreshLoadedEntities();
+                PlayerMapMarkerController.applyToAllLoadedWorlds(cfg);
                 sendStatus("Применено.");
                 return;
             }
@@ -176,6 +187,11 @@ public class HideEnemyHealthDashboardUI extends InteractiveCustomUIPage<HideEnem
         cfg.normalize();
         plugin.saveConfig();
         HideEntityUiSystem.setConfig(cfg);
+
+        // Apply map marker changes if requested.
+        if (refreshMap) {
+            PlayerMapMarkerController.applyToAllLoadedWorlds(cfg);
+        }
 
         // Refresh only what changed (players or NPCs). If both flags are false for some reason, refresh all.
         if (refreshPlayers && !refreshNpcs) {
