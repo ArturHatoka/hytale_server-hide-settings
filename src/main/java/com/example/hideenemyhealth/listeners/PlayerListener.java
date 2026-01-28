@@ -26,17 +26,17 @@ public class PlayerListener {
         // PlayerConnectEvent - When a player connects
         try {
             eventBus.register(PlayerConnectEvent.class, this::onPlayerConnect);
-            LOGGER.at(Level.INFO).log("[HideEnemyHealth] Registered PlayerConnectEvent listener");
+            LOGGER.at(Level.INFO).log("[ServerHideSettings] Registered PlayerConnectEvent listener");
         } catch (Exception e) {
-            LOGGER.at(Level.WARNING).withCause(e).log("[HideEnemyHealth] Failed to register PlayerConnectEvent");
+            LOGGER.at(Level.WARNING).withCause(e).log("[ServerHideSettings] Failed to register PlayerConnectEvent");
         }
 
         // PlayerDisconnectEvent - When a player disconnects
         try {
             eventBus.register(PlayerDisconnectEvent.class, this::onPlayerDisconnect);
-            LOGGER.at(Level.INFO).log("[HideEnemyHealth] Registered PlayerDisconnectEvent listener");
+            LOGGER.at(Level.INFO).log("[ServerHideSettings] Registered PlayerDisconnectEvent listener");
         } catch (Exception e) {
-            LOGGER.at(Level.WARNING).withCause(e).log("[HideEnemyHealth] Failed to register PlayerDisconnectEvent");
+            LOGGER.at(Level.WARNING).withCause(e).log("[ServerHideSettings] Failed to register PlayerDisconnectEvent");
         }
     }
 
@@ -48,7 +48,7 @@ public class PlayerListener {
         String playerName = event.getPlayerRef() != null ? event.getPlayerRef().getUsername() : "Unknown";
         String worldName = event.getWorld() != null ? event.getWorld().getName() : "unknown";
 
-        LOGGER.at(Level.INFO).log("[HideEnemyHealth] Player %s connected to world %s", playerName, worldName);
+        LOGGER.at(Level.INFO).log("[ServerHideSettings] Player %s connected to world %s", playerName, worldName);
 
         // TODO: Add your player join logic here
         // Examples:
@@ -64,7 +64,7 @@ public class PlayerListener {
     private void onPlayerDisconnect(PlayerDisconnectEvent event) {
         String playerName = event.getPlayerRef() != null ? event.getPlayerRef().getUsername() : "Unknown";
 
-        LOGGER.at(Level.INFO).log("[HideEnemyHealth] Player %s disconnected", playerName);
+        LOGGER.at(Level.INFO).log("[ServerHideSettings] Player %s disconnected", playerName);
 
         // TODO: Add your player leave logic here
         // Examples:

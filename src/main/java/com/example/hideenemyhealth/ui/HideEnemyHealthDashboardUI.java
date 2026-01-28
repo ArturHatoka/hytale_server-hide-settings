@@ -25,7 +25,7 @@ import com.hypixel.hytale.server.core.util.NotificationUtil;
 import javax.annotation.Nonnull;
 
 /**
- * Admin dashboard UI for HideEnemyHealth.
+ * Admin dashboard UI for Server Hide Settings.
  *
  * <p>UI is driven by a .ui layout file and event bindings.
  * Any state changes are applied server-side to the config and then re-applied to currently loaded entities.</p>
@@ -33,7 +33,7 @@ import javax.annotation.Nonnull;
 public class HideEnemyHealthDashboardUI extends InteractiveCustomUIPage<HideEnemyHealthDashboardUI.UIEventData> {
 
     /** Path to the UI layout asset. */
-    public static final String LAYOUT = "hideenemyhealth/Dashboard.ui";
+    public static final String LAYOUT = "serverhidesettings/Dashboard.ui";
 
     private final PlayerRef playerRef;
 
@@ -118,8 +118,8 @@ public class HideEnemyHealthDashboardUI extends InteractiveCustomUIPage<HideEnem
             if (player == null || !player.hasPermission(HideEnemyHealthPlugin.ADMIN_PERMISSION)) {
                 NotificationUtil.sendNotification(
                         playerRef.getPacketHandler(),
-                        Message.raw("HideEnemyHealth"),
-                        Message.raw("Нет прав (" + HideEnemyHealthPlugin.ADMIN_PERMISSION + ")"),
+                        Message.raw(HideEnemyHealthPlugin.DISPLAY_NAME),
+                        Message.raw("No permission (" + HideEnemyHealthPlugin.ADMIN_PERMISSION + ")"),
                         NotificationStyle.Warning
                 );
                 return;
@@ -168,7 +168,7 @@ public class HideEnemyHealthDashboardUI extends InteractiveCustomUIPage<HideEnem
                 HideEntityUiSystem.setConfig(cfg);
                 HideEntityUiSystem.refreshLoadedEntities();
                 PlayerMapMarkerController.applyToAllLoadedWorlds(cfg);
-                sendStatus("Применено.");
+                sendStatus("Applied.");
                 return;
             }
             case "close" -> {
@@ -205,13 +205,13 @@ public class HideEnemyHealthDashboardUI extends InteractiveCustomUIPage<HideEnem
         // Update UI widgets
         final UICommandBuilder cmd = new UICommandBuilder();
         syncUI(cmd);
-        cmd.set("#StatusText.Text", "Сохранено и применено.");
+        cmd.set("#StatusText.Text", "Saved and applied.");
         this.sendUpdate(cmd, false);
 
         NotificationUtil.sendNotification(
                 playerRef.getPacketHandler(),
-                Message.raw("HideEnemyHealth"),
-                Message.raw("Сохранено и применено."),
+                Message.raw(HideEnemyHealthPlugin.DISPLAY_NAME),
+                Message.raw("Saved and applied."),
                 NotificationStyle.Success
         );
     }

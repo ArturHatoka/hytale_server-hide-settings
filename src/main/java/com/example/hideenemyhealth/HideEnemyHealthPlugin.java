@@ -22,15 +22,19 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 
 /**
- * HideEnemyHealth - server-side plugin that hides overhead HP bars (and optionally damage numbers).
- *
- * <p>Управление — через in-game UI и команды. Основная логика реализована на сервере через ECS:
- * мы переписываем {@code UIComponentList.componentIds} у сущностей.</p>
+ * Server Hide Settings - server-side plugin that hides overhead UI elements for entities (HP bars, damage numbers)
+ * and optionally hides player markers on the world map.
  */
 public final class HideEnemyHealthPlugin extends JavaPlugin {
 
+    /** Display name shown in UI and notifications. */
+    public static final String DISPLAY_NAME = "Server Hide Settings";
+
+    /** Log prefix used for server logs (no spaces for easier filtering). */
+    public static final String LOG_PREFIX = "[ServerHideSettings]";
+
     /** Permission required for admin UI and reload. */
-    public static final String ADMIN_PERMISSION = "hideenemyhealth.admin";
+    public static final String ADMIN_PERMISSION = "serverhidesettings.admin";
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
 
@@ -38,7 +42,9 @@ public final class HideEnemyHealthPlugin extends JavaPlugin {
     private static HideEnemyHealthPlugin instance;
 
     private final ConfigManager configManager = new ConfigManager();
-    private final File configFile = new File("mods/HideEnemyHealth/config.json");
+
+    /** Canonical config path for this plugin. */
+    private final File configFile = new File("mods/ServerHideSettings/config.json");
 
     @Nullable
     private HideEnemyHealthConfig config;
@@ -61,25 +67,27 @@ public final class HideEnemyHealthPlugin extends JavaPlugin {
      */
     @Nonnull
     public static HideEnemyHealthPlugin getInstance() {
-        // If something calls this too early, fail loudly to catch ordering issues during dev.
-        if (instance == null) throw new IllegalStateException("HideEnemyHealthPlugin not initialized yet");
+        if (instance == null) {
+            throw new IllegalStateException("ServerHideSettings plugin not initialized yet");
+        }
         return instance;
     }
 
     /**
-     * @return current in-memory config. If not loaded yet, returns defaults.
+     * @return current in-memory config. If not loaded yet, returns normalized defaults.
      */
     @Nonnull
     public HideEnemyHealthConfig getConfig() {
         if (config == null) {
-            config = new HideEnemyHealthConfig();
-            config.normalize();
+            final HideEnemyHealthConfig cfg = new HideEnemyHealthConfig();
+            cfg.normalize();
+            config = cfg;
         }
         return config;
     }
 
     /**
-     * Persist current config to disk.
+     * Persist the current config to disk.
      */
     public void saveConfig() {
         final HideEnemyHealthConfig cfg = config;
@@ -89,10 +97,26 @@ public final class HideEnemyHealthPlugin extends JavaPlugin {
     }
 
     /**
-     * Reload config from disk and publish it to ECS systems.
+     * Load configuration from the canonical plugin config path.
+     */
+    @Nonnull
+    private HideEnemyHealthConfig loadConfig() {
+        try {
+            return configManager.loadOrCreate(configFile);
+        } catch (Throwable t) {
+            LOGGER.at(Level.WARNING).withCause(t)
+                    .log("%s Failed to load config; using defaults (not persisted)", LOG_PREFIX);
+            final HideEnemyHealthConfig fallback = new HideEnemyHealthConfig();
+            fallback.normalize();
+            return fallback;
+        }
+    }
+
+    /**
+     * Reload config from disk and publish it to ECS systems and world-map marker controller.
      */
     public void reloadConfig() {
-        config = configManager.loadOrCreate(configFile);
+        config = loadConfig();
         HideEntityUiSystem.setConfig(config);
 
         // Apply map marker settings to loaded worlds.
@@ -106,12 +130,12 @@ public final class HideEnemyHealthPlugin extends JavaPlugin {
     }
 
     /**
-     * Plugin setup phase: register systems, commands, and optional listeners.
+     * Plugin setup phase: register systems, commands, and listeners.
      */
     @Override
     protected void setup() {
         instance = this;
-        LOGGER.at(Level.INFO).log("[HideEnemyHealth] Setting up...");
+        LOGGER.at(Level.INFO).log("%s Setting up...", LOG_PREFIX);
 
         // Config
         reloadConfig();
@@ -122,7 +146,7 @@ public final class HideEnemyHealthPlugin extends JavaPlugin {
         // Commands
         registerCommands();
 
-        // Optional listeners
+        // Listeners
         registerListeners();
 
         // Apply to already loaded entities
@@ -134,7 +158,7 @@ public final class HideEnemyHealthPlugin extends JavaPlugin {
         } catch (Throwable ignored) {
         }
 
-        LOGGER.at(Level.INFO).log("[HideEnemyHealth] Setup complete!");
+        LOGGER.at(Level.INFO).log("%s Setup complete!", LOG_PREFIX);
     }
 
     /**
@@ -142,8 +166,8 @@ public final class HideEnemyHealthPlugin extends JavaPlugin {
      */
     @Override
     protected void start() {
-        LOGGER.at(Level.INFO).log("[HideEnemyHealth] Started!");
-        LOGGER.at(Level.INFO).log("[HideEnemyHealth] Use /hid ui (admin) to open the in-game menu");
+        LOGGER.at(Level.INFO).log("%s Started!", LOG_PREFIX);
+        LOGGER.at(Level.INFO).log("%s Use /hid ui (admin) to open the in-game menu", LOG_PREFIX);
     }
 
     /**
@@ -151,7 +175,7 @@ public final class HideEnemyHealthPlugin extends JavaPlugin {
      */
     @Override
     protected void shutdown() {
-        LOGGER.at(Level.INFO).log("[HideEnemyHealth] Shutting down...");
+        LOGGER.at(Level.INFO).log("%s Shutting down...", LOG_PREFIX);
 
         // Stop background jobs early to avoid work during teardown.
         stopBackgroundJobs();
@@ -160,7 +184,7 @@ public final class HideEnemyHealthPlugin extends JavaPlugin {
         try {
             saveConfig();
         } catch (Throwable t) {
-            LOGGER.at(Level.WARNING).withCause(t).log("[HideEnemyHealth] Failed to persist config on shutdown");
+            LOGGER.at(Level.WARNING).withCause(t).log("%s Failed to persist config on shutdown", LOG_PREFIX);
         }
 
         // Best-effort restore map marker providers (avoid leaving overrides on hot reload).
@@ -181,8 +205,6 @@ public final class HideEnemyHealthPlugin extends JavaPlugin {
 
     /**
      * Start/stop background jobs depending on the active config.
-     *
-     * <p>We keep this conservative: everything is off by default and only enabled via config.</p>
      */
     private synchronized void restartBackgroundJobs() {
         stopBackgroundJobs();
@@ -195,7 +217,7 @@ public final class HideEnemyHealthPlugin extends JavaPlugin {
         final int intervalSeconds = cfg.debug.baselineGc.intervalSeconds;
 
         backgroundScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            final Thread t = new Thread(r, "HideEnemyHealth-Background");
+            final Thread t = new Thread(r, "ServerHideSettings-Background");
             t.setDaemon(true);
             return t;
         });
@@ -204,11 +226,11 @@ public final class HideEnemyHealthPlugin extends JavaPlugin {
             try {
                 HideEntityUiSystem.gcBaselineCache();
             } catch (Throwable t) {
-                LOGGER.at(Level.FINE).withCause(t).log("[HideEnemyHealth] Baseline GC tick failed");
+                LOGGER.at(Level.FINE).withCause(t).log("%s Baseline GC tick failed", LOG_PREFIX);
             }
         }, intervalSeconds, intervalSeconds, TimeUnit.SECONDS);
 
-        LOGGER.at(Level.INFO).log("[HideEnemyHealth] Baseline GC enabled (interval=%ds)", intervalSeconds);
+        LOGGER.at(Level.INFO).log("%s Baseline GC enabled (interval=%ds)", LOG_PREFIX, intervalSeconds);
     }
 
     /**
@@ -234,20 +256,14 @@ public final class HideEnemyHealthPlugin extends JavaPlugin {
 
     /**
      * Register ECS systems.
-     *
-     * <p>For correctness across server builds, we keep a broad system registered that targets all entities
-     * with {@code UIComponentList}. Player/NPC classification is handled inside the applier.</p>
      */
     private void registerSystems() {
         try {
-            // IMPORTANT: keep the broad (ALL) system registered.
-            // In some server builds, entity classification components can differ, and the narrower
-            // PLAYER/NPC queries may miss entities that still have UIComponentList.
-            // The applier itself performs Player/NPC detection to choose the right config branch.
+            // Keep the broad (ALL) system registered for correctness across server builds.
             getEntityStoreRegistry().registerSystem(new HideEntityUiSystem(HideEntityUiSystem.Target.ALL));
-            LOGGER.at(Level.INFO).log("[HideEnemyHealth] Registered HideEntityUiSystem (ALL)");
+            LOGGER.at(Level.INFO).log("%s Registered HideEntityUiSystem (ALL)", LOG_PREFIX);
         } catch (Throwable t) {
-            LOGGER.at(Level.WARNING).withCause(t).log("[HideEnemyHealth] Failed to register ECS systems");
+            LOGGER.at(Level.WARNING).withCause(t).log("%s Failed to register ECS systems", LOG_PREFIX);
         }
     }
 
@@ -257,29 +273,23 @@ public final class HideEnemyHealthPlugin extends JavaPlugin {
     private void registerCommands() {
         try {
             getCommandRegistry().registerCommand(new HideEnemyHealthPluginCommand());
-            LOGGER.at(Level.INFO).log("[HideEnemyHealth] Registered /hid command");
+            LOGGER.at(Level.INFO).log("%s Registered /hid command", LOG_PREFIX);
         } catch (Throwable t) {
-            LOGGER.at(Level.WARNING).withCause(t).log("[HideEnemyHealth] Failed to register commands");
+            LOGGER.at(Level.WARNING).withCause(t).log("%s Failed to register commands", LOG_PREFIX);
         }
     }
 
     /**
-     * Register optional event listeners.
-     *
-     * <p>Listener is not required for core functionality; the ECS systems handle live updates.
-     * Enable only if you want connection logging or you later add join/leave logic.</p>
+     * Register optional event listeners / hooks.
      */
     private void registerListeners() {
         final EventRegistry eventBus = getEventRegistry();
         try {
             // World hooks: apply player map-marker settings for new worlds.
             PlayerMapMarkerController.register(eventBus);
-
-            // Uncomment if you need it:
-            // new com.example.hideenemyhealth.listeners.PlayerListener().register(eventBus);
-            LOGGER.at(Level.FINE).log("[HideEnemyHealth] Listeners registered");
+            LOGGER.at(Level.FINE).log("%s Listeners registered", LOG_PREFIX);
         } catch (Throwable t) {
-            LOGGER.at(Level.WARNING).withCause(t).log("[HideEnemyHealth] Failed to register listeners");
+            LOGGER.at(Level.WARNING).withCause(t).log("%s Failed to register listeners", LOG_PREFIX);
         }
     }
 }

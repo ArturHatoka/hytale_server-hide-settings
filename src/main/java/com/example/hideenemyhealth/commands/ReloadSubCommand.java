@@ -2,7 +2,6 @@ package com.example.hideenemyhealth.commands;
 
 import com.example.hideenemyhealth.HideEnemyHealthPlugin;
 import com.example.hideenemyhealth.systems.HideEntityUiSystem;
-import com.example.hideenemyhealth.worldmap.PlayerMapMarkerController;
 import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.command.system.CommandContext;
 import com.hypixel.hytale.server.core.command.system.basecommands.CommandBase;
@@ -34,13 +33,13 @@ public class ReloadSubCommand extends CommandBase {
      */
     @Override
     protected void executeSync(@NonNullDecl CommandContext commandContext) {
-        if (!commandContext.sender().hasPermission(HideEnemyHealthPlugin.ADMIN_PERMISSION)) {
+        if (!(commandContext.sender().hasPermission(HideEnemyHealthPlugin.ADMIN_PERMISSION))) {
             commandContext.sendMessage(Message.raw("Нет прав: " + HideEnemyHealthPlugin.ADMIN_PERMISSION));
             return;
         }
 
         HideEnemyHealthPlugin.getInstance().reloadConfig();
         HideEntityUiSystem.refreshLoadedEntities();
-        commandContext.sendMessage(Message.raw("HideEnemyHealth: конфиг перезагружен и применён."));
+        commandContext.sendMessage(Message.raw(HideEnemyHealthPlugin.DISPLAY_NAME + ": конфиг перезагружен и применён."));
     }
 }

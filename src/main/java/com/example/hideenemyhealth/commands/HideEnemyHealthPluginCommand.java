@@ -3,7 +3,7 @@ package com.example.hideenemyhealth.commands;
 import com.hypixel.hytale.server.core.command.system.basecommands.AbstractCommandCollection;
 
 /**
- * Root command for HideEnemyHealth plugin.
+ * Root command for Server Hide Settings plugin.
  *
  * <p>Usage:
  * <ul>
@@ -20,7 +20,7 @@ public class HideEnemyHealthPluginCommand extends AbstractCommandCollection {
      * Create command collection and register subcommands.
      */
     public HideEnemyHealthPluginCommand() {
-        super("hid", "HideEnemyHealth plugin commands");
+        super("hid", "Server Hide Settings plugin commands");
 
         this.addSubCommand(new HelpSubCommand());
         this.addSubCommand(new InfoSubCommand());

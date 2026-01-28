@@ -138,7 +138,7 @@ public final class PlayerMapMarkerController {
         final Accessor accessor = resolveAccessor(manager);
         if (accessor == null) {
             if (WARNED_NO_ACCESSOR.compareAndSet(false, true)) {
-                LOGGER.at(Level.WARNING).log("[HideEnemyHealth] Cannot access WorldMapManager providers; map marker hiding disabled on this server build");
+                LOGGER.at(Level.WARNING).log("[ServerHideSettings] Cannot access WorldMapManager providers; map marker hiding disabled on this server build");
             }
             return;
         }
