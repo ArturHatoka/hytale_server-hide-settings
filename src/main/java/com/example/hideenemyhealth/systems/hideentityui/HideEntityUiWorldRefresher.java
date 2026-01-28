@@ -1,22 +1,12 @@
 package com.example.hideenemyhealth.systems.hideentityui;
 
-import com.example.hideenemyhealth.config.HideEnemyHealthConfig;
-import com.hypixel.hytale.component.Ref;
-import com.hypixel.hytale.component.Store;
+import com.example.hideenemyhealth.util.WorldThreadExecutor;
 import com.hypixel.hytale.logger.HytaleLogger;
-import com.hypixel.hytale.server.core.entity.entities.Player;
-import com.hypixel.hytale.server.core.modules.entityui.UIComponentList;
-import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.Universe;
 import com.hypixel.hytale.server.core.universe.world.World;
-import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
-import com.hypixel.hytale.server.npc.entities.NPCEntity;
 
 import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import java.lang.reflect.Method;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
@@ -26,13 +16,11 @@ import java.util.logging.Level;
  * Utilities to force-refresh already loaded entities (players / NPCs) across all loaded worlds.
  *
  * <p>Important thread-safety rule:
- * any direct access to {@link Ref#getStore()}, {@link Store} operations, or entity components must happen
- * in the world's execution context via {@code world.execute(Runnable)}.</p>
+ * any direct access to entity components must happen in the world's execution context.</p>
  */
 public final class HideEntityUiWorldRefresher {
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
-
 
     // Debounced refresh scheduler:
     // UI actions can trigger multiple refresh calls in quick succession. We coalesce them so we don't
@@ -44,26 +32,11 @@ public final class HideEntityUiWorldRefresher {
     private static final AtomicInteger PENDING_REFRESH_MASK = new AtomicInteger(0);
     private static final AtomicBoolean REFRESH_LOOP_RUNNING = new AtomicBoolean(false);
 
-
-    // Reflection caches: we keep them to tolerate minor API differences between server builds.
-    private static final ConcurrentHashMap<Class<?>, Method> EXECUTE_METHOD_CACHE = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<Class<?>, Boolean> EXECUTE_METHOD_MISSING = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<Class<?>, Boolean> EXECUTE_FALLBACK_WARNED = new ConcurrentHashMap<>();
-
-    private static final ConcurrentHashMap<Class<?>, Method> GET_NPC_REFS_CACHE = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<Class<?>, Boolean> GET_NPC_REFS_MISSING = new ConcurrentHashMap<>();
-
-    private static final ConcurrentHashMap<Class<?>, Method> GET_REFERENCE_CACHE = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<Class<?>, Boolean> GET_REFERENCE_MISSING = new ConcurrentHashMap<>();
-
     private HideEntityUiWorldRefresher() {
     }
 
     /**
      * Refresh players and NPCs in all currently loaded worlds.
-     *
-     * <p>This call is debounced and will coalesce with other refresh requests triggered in the same tick.
-     * It reduces redundant world iterations when the admin UI toggles multiple settings quickly.</p>
      */
     public static void refreshLoadedEntities() {
         requestRefresh(REFRESH_PLAYERS_MASK | REFRESH_NPCS_MASK);
@@ -71,8 +44,6 @@ public final class HideEntityUiWorldRefresher {
 
     /**
      * Refresh players only in all currently loaded worlds.
-     *
-     * <p>This call is debounced and will coalesce with other refresh requests.</p>
      */
     public static void refreshLoadedPlayers() {
         requestRefresh(REFRESH_PLAYERS_MASK);
@@ -80,8 +51,6 @@ public final class HideEntityUiWorldRefresher {
 
     /**
      * Refresh NPCs only in all currently loaded worlds.
-     *
-     * <p>This call is debounced and will coalesce with other refresh requests.</p>
      */
     public static void refreshLoadedNpcs() {
         requestRefresh(REFRESH_NPCS_MASK);
@@ -89,9 +58,6 @@ public final class HideEntityUiWorldRefresher {
 
     /**
      * Trigger a defensive baseline-cache GC sweep.
-     *
-     * <p>This does not modify live entities; it only removes baseline entries that refer to entities
-     * that are no longer present (best-effort, conservative).</p>
      */
     public static void gcBaselineCache() {
         requestRefresh(BASELINE_GC_MASK);
@@ -99,11 +65,6 @@ public final class HideEntityUiWorldRefresher {
 
     /**
      * Request a refresh pass. Multiple requests are coalesced into a single world iteration.
-     *
-     * <p>Implementation detail: this uses an in-memory bitmask and a single-thread "drain loop".
-     * Calls made while a refresh is already running simply OR their bits into the pending mask.</p>
-     *
-     * @param mask bitmask of refresh targets ({@link #REFRESH_PLAYERS_MASK}, {@link #REFRESH_NPCS_MASK})
      */
     private static void requestRefresh(final int mask) {
         if (mask != 0) {
@@ -127,26 +88,26 @@ public final class HideEntityUiWorldRefresher {
                 if (players && npcs && gc) {
                     forEachWorldOnWorldThread(world -> {
                         refreshWorld(world);
-                        baselineGcSweepWorld(world);
+                        HideEntityUiBaselineGcPass.baselineGcSweepWorld(world);
                     });
                 } else if (players && npcs) {
                     forEachWorldOnWorldThread(HideEntityUiWorldRefresher::refreshWorld);
                 } else if (players && gc) {
                     forEachWorldOnWorldThread(world -> {
-                        refreshPlayers(world);
-                        baselineGcSweepWorld(world);
+                        HideEntityUiPlayerRefreshPass.refreshPlayers(world);
+                        HideEntityUiBaselineGcPass.baselineGcSweepWorld(world);
                     });
                 } else if (npcs && gc) {
                     forEachWorldOnWorldThread(world -> {
-                        refreshNpcs(world);
-                        baselineGcSweepWorld(world);
+                        HideEntityUiNpcRefreshPass.refreshNpcs(world);
+                        HideEntityUiBaselineGcPass.baselineGcSweepWorld(world);
                     });
                 } else if (players) {
-                    forEachWorldOnWorldThread(HideEntityUiWorldRefresher::refreshPlayers);
+                    forEachWorldOnWorldThread(HideEntityUiPlayerRefreshPass::refreshPlayers);
                 } else if (npcs) {
-                    forEachWorldOnWorldThread(HideEntityUiWorldRefresher::refreshNpcs);
+                    forEachWorldOnWorldThread(HideEntityUiNpcRefreshPass::refreshNpcs);
                 } else if (gc) {
-                    forEachWorldOnWorldThread(HideEntityUiWorldRefresher::baselineGcSweepWorld);
+                    forEachWorldOnWorldThread(HideEntityUiBaselineGcPass::baselineGcSweepWorld);
                 }
             }
         } finally {
@@ -159,7 +120,6 @@ public final class HideEntityUiWorldRefresher {
         }
     }
 
-
     /**
      * Iterate all loaded worlds and run a task on each world thread.
      */
@@ -170,7 +130,7 @@ public final class HideEntityUiWorldRefresher {
 
             for (World world : worlds.values()) {
                 if (world == null) continue;
-                runOnWorldThread(world, () -> perWorldTask.accept(world));
+                WorldThreadExecutor.runStrict(world, () -> perWorldTask.accept(world), LOGGER);
             }
         } catch (Throwable t) {
             LOGGER.at(Level.WARNING).withCause(t).log("[ServerHideSettings] World iteration failed");
@@ -181,626 +141,7 @@ public final class HideEntityUiWorldRefresher {
      * Refresh both players and NPCs for a single world.
      */
     private static void refreshWorld(@Nonnull final World world) {
-        refreshPlayers(world);
-        refreshNpcs(world);
-    }
-
-    /**
-     * Refresh all players currently present in a world.
-     */
-    private static void refreshPlayers(@Nonnull final World world) {
-        final HideEnemyHealthConfig cfg = HideEntityUiConfigRegistry.getConfig();
-        final boolean log = cfg.debug != null && cfg.debug.logRefreshStats;
-        final long t0 = log ? System.nanoTime() : 0L;
-
-        // Preferred path: iterate via the world's EntityStore using ECS chunk iteration.
-        // This gives us a CommandBuffer, which is the most reliable way to apply component updates.
-        final Store<EntityStore> worldStore = tryGetWorldStore(world);
-        if (worldStore != null) {
-            final int[] stats = new int[2]; // [0]=visited, [1]=changed
-            try {
-                worldStore.forEachChunk(Player.getComponentType(), (archetypeChunk, commandBuffer) -> {
-                    for (int i = 0; i < archetypeChunk.size(); i++) {
-                        final Ref<EntityStore> ref = archetypeChunk.getReferenceTo(i);
-                        if (ref == null || !ref.isValid()) continue;
-
-                        stats[0]++;
-                        if (HideEntityUiApplier.applyForRefAndReport(ref, worldStore, commandBuffer, Boolean.FALSE)) {
-                            stats[1]++;
-                        }
-                    }
-                });
-            } catch (Throwable t) {
-                LOGGER.at(Level.WARNING).withCause(t)
-                        .log("[ServerHideSettings] Failed to refresh players in world: %s", safeWorldName(world));
-            } finally {
-                if (log) {
-                    final long ms = (System.nanoTime() - t0) / 1_000_000L;
-                    LOGGER.at(Level.INFO).log(
-                            "[ServerHideSettings][Refresh] world=%s players visited=%d changed=%d timeMs=%d",
-                            safeWorldName(world), stats[0], stats[1], ms
-                    );
-                }
-            }
-            return;
-        }
-
-        // Fallback path: iterate via public player refs and write directly.
-        int visited = 0;
-        int changed = 0;
-        try {
-            for (PlayerRef playerRef : world.getPlayerRefs()) {
-                if (playerRef == null) continue;
-
-                final Ref<EntityStore> ref = safeGetPlayerEntityRef(playerRef);
-                if (ref == null || !ref.isValid()) continue;
-
-                visited++;
-
-                final Store<EntityStore> store = ref.getStore();
-                if (store == null) continue;
-
-                if (HideEntityUiApplier.applyForRefAndReport(ref, store, null, Boolean.FALSE)) {
-                    changed++;
-                }
-            }
-        } catch (Throwable t) {
-            LOGGER.at(Level.WARNING).withCause(t)
-                    .log("[ServerHideSettings] Failed to refresh players in world: %s", safeWorldName(world));
-        } finally {
-            if (log) {
-                final long ms = (System.nanoTime() - t0) / 1_000_000L;
-                LOGGER.at(Level.INFO).log(
-                        "[ServerHideSettings][Refresh] world=%s players visited=%d changed=%d timeMs=%d",
-                        safeWorldName(world), visited, changed, ms
-                );
-            }
-        }
-    }
-
-    /**
-     * Refresh all NPC-like entities currently present in a world.
-     *
-     * <p>NPC access is done via reflection because server API may evolve.
-     * If the method isn't available, we quietly skip NPC refresh.</p>
-     */
-    private static void refreshNpcs(@Nonnull final World world) {
-        final HideEnemyHealthConfig cfg = HideEntityUiConfigRegistry.getConfig();
-        final boolean log = cfg.debug != null && cfg.debug.logRefreshStats;
-        final long t0 = log ? System.nanoTime() : 0L;
-
-        // Preferred path: iterate via ECS chunk iteration over NPCEntity component.
-        final Store<EntityStore> worldStore = tryGetWorldStore(world);
-        if (worldStore != null) {
-            final int[] stats = new int[2]; // [0]=visited, [1]=changed
-            try {
-                worldStore.forEachChunk(NPCEntity.getComponentType(), (archetypeChunk, commandBuffer) -> {
-                    for (int i = 0; i < archetypeChunk.size(); i++) {
-                        final Ref<EntityStore> ref = archetypeChunk.getReferenceTo(i);
-                        if (ref == null || !ref.isValid()) continue;
-
-                        // Fast skip: NPC archetypes without UIComponentList cannot be modified.
-                        if (archetypeChunk.getComponent(i, UIComponentList.getComponentType()) == null) continue;
-
-                        stats[0]++;
-                        if (HideEntityUiApplier.applyForRefAndReport(ref, worldStore, commandBuffer, Boolean.TRUE)) {
-                            stats[1]++;
-                        }
-                    }
-                });
-            } catch (Throwable t) {
-                LOGGER.at(Level.WARNING).withCause(t)
-                        .log("[ServerHideSettings] Failed to refresh NPCs in world: %s", safeWorldName(world));
-            } finally {
-                if (log) {
-                    final long ms = (System.nanoTime() - t0) / 1_000_000L;
-                    LOGGER.at(Level.INFO).log(
-                            "[ServerHideSettings][Refresh] world=%s npcs visited=%d changed=%d timeMs=%d",
-                            safeWorldName(world), stats[0], stats[1], ms
-                    );
-                }
-            }
-            return;
-        }
-
-        final Iterable<?> npcRefs = getNpcRefs(world);
-        if (npcRefs == null) {
-            if (log) {
-                LOGGER.at(Level.INFO).log(
-                        "[ServerHideSettings][Refresh] world=%s npcs skipped (API not available)",
-                        safeWorldName(world)
-                );
-            }
-            return;
-        }
-
-        int visited = 0;
-        int changed = 0;
-
-        try {
-            for (Object npcRefLike : npcRefs) {
-                if (npcRefLike == null) continue;
-
-                final Ref<EntityStore> ref = coerceToEntityRef(npcRefLike);
-                if (ref == null || !ref.isValid()) continue;
-
-                visited++;
-
-                final Store<EntityStore> store = ref.getStore();
-                if (store == null) continue;
-
-                if (HideEntityUiApplier.applyForRefAndReport(ref, store, null, Boolean.TRUE)) {
-                    changed++;
-                }
-            }
-        } catch (Throwable t) {
-            LOGGER.at(Level.FINE).withCause(t)
-                    .log("[ServerHideSettings] NPC refresh skipped due to API differences (world=%s)", safeWorldName(world));
-        } finally {
-            if (log) {
-                final long ms = (System.nanoTime() - t0) / 1_000_000L;
-                LOGGER.at(Level.INFO).log(
-                        "[ServerHideSettings][Refresh] world=%s npcs visited=%d changed=%d timeMs=%d",
-                        safeWorldName(world), visited, changed, ms
-                );
-            }
-        }
-    }
-
-    /**
-     * Perform a conservative baseline-cache sweep for a single world.
-     *
-     * <p>We only sweep NPC baselines if we successfully observed at least one NPC ref. This avoids
-     * false positives on server builds where NPC refs are not exposed or incomplete.</p>
-     */
-    private static void baselineGcSweepWorld(@Nonnull final World world) {
-        final HideEnemyHealthConfig cfg = HideEntityUiConfigRegistry.getConfig();
-        final boolean log = cfg.debug != null && cfg.debug.logRefreshStats;
-        final long t0 = log ? System.nanoTime() : 0L;
-
-        final LongHashSet aliveKeys = new LongHashSet(256);
-        final IntHashSet storeIds = new IntHashSet(8);
-
-        final int[] seen = new int[2]; // [0]=players, [1]=npcs
-
-        // Preferred path: gather alive keys via the world's EntityStore.
-        final Store<EntityStore> worldStore = tryGetWorldStore(world);
-        if (worldStore != null) {
-            try {
-                worldStore.forEachChunk(Player.getComponentType(), (archetypeChunk, commandBuffer) -> {
-                    for (int i = 0; i < archetypeChunk.size(); i++) {
-                        final Ref<EntityStore> ref = archetypeChunk.getReferenceTo(i);
-                        if (ref == null || !ref.isValid()) continue;
-
-                        final long key = EntityUiBaselineCache.entityKey(ref);
-                        aliveKeys.add(key);
-                        storeIds.add(EntityUiBaselineCache.storeIdFromKey(key));
-                        seen[0]++;
-                    }
-                });
-
-                worldStore.forEachChunk(NPCEntity.getComponentType(), (archetypeChunk, commandBuffer) -> {
-                    for (int i = 0; i < archetypeChunk.size(); i++) {
-                        final Ref<EntityStore> ref = archetypeChunk.getReferenceTo(i);
-                        if (ref == null || !ref.isValid()) continue;
-
-                        final long key = EntityUiBaselineCache.entityKey(ref);
-                        aliveKeys.add(key);
-                        storeIds.add(EntityUiBaselineCache.storeIdFromKey(key));
-                        seen[1]++;
-                    }
-                });
-            } catch (Throwable ignored) {
-                // If store iteration fails for any reason, fall back to best-effort API methods below.
-            }
-        }
-
-        // Fallback path: Players are accessible via world.getPlayerRefs().
-        if (storeIds.isEmpty()) {
-            try {
-                for (PlayerRef playerRef : world.getPlayerRefs()) {
-                    if (playerRef == null) continue;
-                    final Ref<EntityStore> ref = safeGetPlayerEntityRef(playerRef);
-                    if (ref == null || !ref.isValid()) continue;
-
-                    final long key = EntityUiBaselineCache.entityKey(ref);
-                    aliveKeys.add(key);
-                    storeIds.add(EntityUiBaselineCache.storeIdFromKey(key));
-                    seen[0]++;
-                }
-            } catch (Throwable ignored) {
-            }
-
-            // NPCs may be unavailable depending on server build.
-            final Iterable<?> npcRefs = getNpcRefs(world);
-            if (npcRefs != null) {
-                try {
-                    for (Object npcRefLike : npcRefs) {
-                        if (npcRefLike == null) continue;
-                        final Ref<EntityStore> ref = coerceToEntityRef(npcRefLike);
-                        if (ref == null || !ref.isValid()) continue;
-
-                        final long key = EntityUiBaselineCache.entityKey(ref);
-                        aliveKeys.add(key);
-                        storeIds.add(EntityUiBaselineCache.storeIdFromKey(key));
-                        seen[1]++;
-                    }
-                } catch (Throwable ignored) {
-                }
-            }
-        }
-
-        // We can only sweep stores for which we observed at least one entity ref.
-        if (storeIds.isEmpty()) return;
-
-        // If we can see the world's EntityStore, it is safe to sweep both kinds.
-        // On fallback paths, keep the previous conservative behavior.
-        final int sweepKindsMask = (worldStore != null)
-                ? (EntityUiBaselineCache.KIND_PLAYER | EntityUiBaselineCache.KIND_NPC)
-                : (EntityUiBaselineCache.KIND_PLAYER | (seen[1] > 0 ? EntityUiBaselineCache.KIND_NPC : 0));
-
-        int removed = 0;
-        for (int i = 0; i < storeIds.capacity(); i++) {
-            if (!storeIds.isUsedAt(i)) continue;
-            final int storeId = storeIds.getValueAt(i);
-            removed += EntityUiBaselineCache.sweepOrphanedForStore(storeId, aliveKeys, sweepKindsMask);
-        }
-
-        if (log) {
-            final long ms = (System.nanoTime() - t0) / 1_000_000L;
-            LOGGER.at(Level.INFO).log(
-                    "[ServerHideSettings][BaselineGC] world=%s stores=%d seenPlayers=%d seenNpcs=%d removed=%d timeMs=%d",
-                    safeWorldName(world), storeIds.count(), seen[0], seen[1], removed, ms
-            );
-        }
-    }
-
-    /**
-     * Minimal primitive long hash set (open addressing).
-     */
-    private static final class LongHashSet implements EntityUiBaselineCache.LongKeySet {
-        private long[] keys;
-        private boolean[] used;
-        private int size;
-
-        LongHashSet(int initialCapacity) {
-            int cap = 1;
-            while (cap < initialCapacity) cap <<= 1;
-            keys = new long[cap];
-            used = new boolean[cap];
-        }
-
-        void add(long key) {
-            if ((size + 1) * 2 >= keys.length) rehash(keys.length << 1);
-            int idx = mix64To32(key) & (keys.length - 1);
-            while (used[idx]) {
-                if (keys[idx] == key) return;
-                idx = (idx + 1) & (keys.length - 1);
-            }
-            used[idx] = true;
-            keys[idx] = key;
-            size++;
-        }
-
-        @Override
-        public boolean contains(long key) {
-            int idx = mix64To32(key) & (keys.length - 1);
-            while (used[idx]) {
-                if (keys[idx] == key) return true;
-                idx = (idx + 1) & (keys.length - 1);
-            }
-            return false;
-        }
-
-        private void rehash(int newCap) {
-            final long[] oldKeys = keys;
-            final boolean[] oldUsed = used;
-            keys = new long[newCap];
-            used = new boolean[newCap];
-            size = 0;
-            for (int i = 0; i < oldKeys.length; i++) {
-                if (oldUsed[i]) add(oldKeys[i]);
-            }
-        }
-
-        private static int mix64To32(long z) {
-            z ^= (z >>> 33);
-            z *= 0xff51afd7ed558ccdL;
-            z ^= (z >>> 33);
-            z *= 0xc4ceb9fe1a85ec53L;
-            z ^= (z >>> 33);
-            return (int) z;
-        }
-    }
-
-    /**
-     * Minimal primitive int hash set (open addressing).
-     */
-    private static final class IntHashSet {
-        private int[] values;
-        private boolean[] used;
-        private int mask;
-        private int count;
-
-        IntHashSet(int initialCapacity) {
-            int cap = 1;
-            while (cap < initialCapacity) cap <<= 1;
-            values = new int[cap];
-            used = new boolean[cap];
-            mask = cap - 1;
-            count = 0;
-        }
-
-        void add(int v) {
-            // Resize at ~50% load to keep probes short.
-            if ((count + 1) * 2 >= values.length) {
-                rehash(values.length << 1);
-            }
-
-            int idx = mix32(v) & mask;
-            while (used[idx]) {
-                if (values[idx] == v) return;
-                idx = (idx + 1) & mask;
-            }
-            used[idx] = true;
-            values[idx] = v;
-            count++;
-        }
-
-        boolean isEmpty() {
-            return count == 0;
-        }
-
-        int capacity() {
-            return values.length;
-        }
-
-        int count() {
-            return count;
-        }
-
-        int getValueAt(int idx) {
-            return values[idx];
-        }
-
-        boolean isUsedAt(int idx) {
-            return used[idx];
-        }
-
-        private void rehash(int newCap) {
-            final int[] oldValues = values;
-            final boolean[] oldUsed = used;
-
-            values = new int[newCap];
-            used = new boolean[newCap];
-            mask = newCap - 1;
-            count = 0;
-
-            for (int i = 0; i < oldValues.length; i++) {
-                if (oldUsed[i]) {
-                    add(oldValues[i]);
-                }
-            }
-        }
-
-        private static int mix32(int x) {
-            x ^= (x >>> 16);
-            x *= 0x7feb352d;
-            x ^= (x >>> 15);
-            x *= 0x846ca68b;
-            x ^= (x >>> 16);
-            return x;
-        }
-    }
-
-    /**
-     * Try to obtain the ECS {@link Store} for a world.
-     *
-     * <p>The public server API exposes {@code world.getEntityStore()}, and then {@code entityStore.getStore()}.
-     * We keep this in a helper so refresh paths can fall back to older/reflection-based methods if needed.</p>
-     */
-    @Nullable
-    private static Store<EntityStore> tryGetWorldStore(@Nonnull final World world) {
-        try {
-            final EntityStore entityStore = world.getEntityStore();
-            if (entityStore == null) return null;
-            return entityStore.getStore();
-        } catch (Throwable ignored) {
-            return null;
-        }
-    }
-
-    /**
-     * Extract an ECS ref from {@link PlayerRef}, if API provides {@code getReference()}.
-     */
-    @Nullable
-    private static Ref<EntityStore> safeGetPlayerEntityRef(@Nonnull final PlayerRef playerRef) {
-        try {
-            @SuppressWarnings("unchecked")
-            final Ref<EntityStore> ref = (Ref<EntityStore>) playerRef.getReference();
-            return ref;
-        } catch (Throwable ignored) {
-            return null;
-        }
-    }
-
-    /**
-     * Reflectively call {@code world.getNpcRefs()} if available.
-     */
-    @Nullable
-    private static Iterable<?> getNpcRefs(@Nonnull final World world) {
-        final Method m = getCachedNoArg(world.getClass(), "getNpcRefs", GET_NPC_REFS_CACHE, GET_NPC_REFS_MISSING);
-        if (m == null) return null;
-
-        try {
-            final Object res = m.invoke(world);
-            return (res instanceof Iterable<?> it) ? it : null;
-        } catch (Throwable ignored) {
-            return null;
-        }
-    }
-
-    /**
-     * Convert a "NPCRef"-like object into an ECS {@link Ref}.
-     *
-     * <p>Some server builds may directly return {@code Iterable<Ref<EntityStore>>};
-     * others may return wrapper objects that expose {@code getReference()}.</p>
-     */
-    @Nullable
-    private static Ref<EntityStore> coerceToEntityRef(@Nonnull final Object npcRefLike) {
-        if (npcRefLike instanceof Ref<?> refObj) {
-            @SuppressWarnings("unchecked")
-            final Ref<EntityStore> cast = (Ref<EntityStore>) refObj;
-            return cast;
-        }
-
-        final Method getReference = getCachedNoArg(npcRefLike.getClass(), "getReference", GET_REFERENCE_CACHE, GET_REFERENCE_MISSING);
-        if (getReference == null) return null;
-
-        try {
-            final Object refObj = getReference.invoke(npcRefLike);
-            if (refObj instanceof Ref<?> r2) {
-                @SuppressWarnings("unchecked")
-                final Ref<EntityStore> cast2 = (Ref<EntityStore>) r2;
-                return cast2;
-            }
-            return null;
-        } catch (Throwable ignored) {
-            return null;
-        }
-    }
-
-    /**
-     * Run a task via {@code world.execute(Runnable)}.
-     *
-     * <p>If {@code execute} is not available, we fall back to running synchronously. This keeps the plugin
-     * functional on server builds where world execution scheduling is not exposed publicly, at the cost of
-     * potentially violating thread-affinity expectations.</p>
-     */
-    private static void runOnWorldThread(@Nonnull final World world, @Nonnull final Runnable task) {
-        final Class<?> worldClass = world.getClass();
-        final Method execute = getCached(worldClass, "execute", new Class<?>[]{Runnable.class},
-                EXECUTE_METHOD_CACHE, EXECUTE_METHOD_MISSING);
-
-        if (execute != null) {
-            try {
-                execute.invoke(world, task);
-                return;
-            } catch (Throwable t) {
-                LOGGER.at(Level.WARNING).withCause(t)
-                        .log("[ServerHideSettings] World.execute failed (world=%s)", safeWorldName(world));
-            }
-        }
-
-        // Compatibility fallback:
-        // Some server builds expose world execution via non-public methods or a different scheduler.
-        // If we cannot schedule safely, we still run synchronously to preserve functionality.
-        // This mirrors the previous behavior that the plugin relied on.
-        if (EXECUTE_FALLBACK_WARNED.putIfAbsent(worldClass, Boolean.TRUE) == null) {
-            LOGGER.at(Level.WARNING).log(
-                    "[ServerHideSettings] World.execute(Runnable) not accessible on %s; running refresh task directly (may be unsafe)",
-                    worldClass.getName()
-            );
-        }
-
-        try {
-            task.run();
-        } catch (Throwable t) {
-            LOGGER.at(Level.WARNING).withCause(t)
-                    .log("[ServerHideSettings] Fallback refresh execution failed (world=%s)", safeWorldName(world));
-        }
-    }
-
-    /**
-     * Lookup and cache a no-arg method.
-     */
-    @Nullable
-    private static Method getCachedNoArg(@Nonnull final Class<?> clazz,
-                                        @Nonnull final String name,
-                                        @Nonnull final ConcurrentHashMap<Class<?>, Method> cache,
-                                        @Nonnull final ConcurrentHashMap<Class<?>, Boolean> missing) {
-        return getCached(clazz, name, new Class<?>[0], cache, missing);
-    }
-
-    /**
-     * Lookup and cache a method by name and signature.
-     */
-    @Nullable
-    private static Method getCached(@Nonnull final Class<?> clazz,
-                                    @Nonnull final String name,
-                                    @Nonnull final Class<?>[] params,
-                                    @Nonnull final ConcurrentHashMap<Class<?>, Method> cache,
-                                    @Nonnull final ConcurrentHashMap<Class<?>, Boolean> missing) {
-
-        final Method cached = cache.get(clazz);
-        if (cached != null) return cached;
-        if (Boolean.TRUE.equals(missing.get(clazz))) return null;
-
-        try {
-            // 1) Public method (includes inherited)
-            final Method m = clazz.getMethod(name, params);
-            cache.put(clazz, m);
-            return m;
-        } catch (NoSuchMethodException ignored) {
-            // 2) Non-public method somewhere in class hierarchy
-            final Method declared = findDeclaredMethod(clazz, name, params);
-            if (declared != null) {
-                try {
-                    declared.setAccessible(true);
-                } catch (Throwable ignored2) {
-                    // ignore
-                }
-                cache.put(clazz, declared);
-                return declared;
-            }
-
-            // Log only once per class.
-            if (missing.putIfAbsent(clazz, Boolean.TRUE) == null) {
-                LOGGER.at(Level.FINE).log(
-                        "[ServerHideSettings] %s.%s(...) not available; skipping that refresh path.",
-                        clazz.getSimpleName(), name
-                );
-            }
-            return null;
-
-        } catch (Throwable t) {
-            if (missing.putIfAbsent(clazz, Boolean.TRUE) == null) {
-                LOGGER.at(Level.FINE).withCause(t)
-                        .log("[ServerHideSettings] Failed to reflect %s.%s(...)", clazz.getSimpleName(), name);
-            }
-            return null;
-        }
-    }
-
-    /**
-     * Find a declared (possibly non-public) method in a class hierarchy.
-     */
-    @Nullable
-    private static Method findDeclaredMethod(@Nonnull final Class<?> start,
-                                             @Nonnull final String name,
-                                             @Nonnull final Class<?>[] params) {
-        Class<?> c = start;
-        while (c != null) {
-            try {
-                return c.getDeclaredMethod(name, params);
-            } catch (NoSuchMethodException ignored) {
-                c = c.getSuperclass();
-            } catch (Throwable t) {
-                return null;
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Best-effort world name for logging.
-     */
-    @Nonnull
-    private static String safeWorldName(@Nonnull final World world) {
-        try {
-            return world.getName();
-        } catch (Throwable t) {
-            return "unknown";
-        }
+        HideEntityUiPlayerRefreshPass.refreshPlayers(world);
+        HideEntityUiNpcRefreshPass.refreshNpcs(world);
     }
 }
