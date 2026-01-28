@@ -73,9 +73,7 @@ public final class EntityUiBaselineCache {
         // If we learned the entity kind later, update it (unknown -> known).
         if (entry.kind == KIND_UNKNOWN && kind != KIND_UNKNOWN) {
             entry.kind = kind;
-        }
-        entry.touch();
-        return entry.baselineIds;
+        }        return entry.baselineIds;
     }
 
     /**
@@ -85,9 +83,7 @@ public final class EntityUiBaselineCache {
     @Nullable
     public static int[] getBaseline(final long key) {
         final BaselineEntry entry = BASELINES.get(key);
-        if (entry == null) return null;
-        entry.touch();
-        return entry.baselineIds;
+        if (entry == null) return null;        return entry.baselineIds;
     }
 
     /**
@@ -159,16 +155,10 @@ public final class EntityUiBaselineCache {
     private static final class BaselineEntry {
         final int[] baselineIds;
         volatile byte kind;
-        volatile long lastTouchNanos;
 
         BaselineEntry(@Nonnull final int[] baselineIds, final byte kind) {
             this.baselineIds = baselineIds;
             this.kind = kind;
-            touch();
-        }
-
-        void touch() {
-            lastTouchNanos = System.nanoTime();
         }
     }
 }

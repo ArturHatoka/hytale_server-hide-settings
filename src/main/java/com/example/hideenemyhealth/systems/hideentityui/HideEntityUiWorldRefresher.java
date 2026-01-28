@@ -335,9 +335,9 @@ public final class HideEntityUiWorldRefresher {
         }
 
         int removed = 0;
-        for (int i = 0; i < storeIds.size; i++) {
-            final int storeId = storeIds.values[i];
-            if (!storeIds.used[i]) continue;
+        for (int i = 0; i < storeIds.capacity(); i++) {
+            if (!storeIds.isUsedAt(i)) continue;
+            final int storeId = storeIds.getValueAt(i);
             removed += EntityUiBaselineCache.sweepOrphanedForStore(storeId, aliveKeys, sweepKindsMask);
         }
 
@@ -345,7 +345,7 @@ public final class HideEntityUiWorldRefresher {
             final long ms = (System.nanoTime() - t0) / 1_000_000L;
             LOGGER.at(Level.INFO).log(
                     "[ServerHideSettings][BaselineGC] world=%s stores=%d seenPlayers=%d seenNpcs=%d removed=%d timeMs=%d",
-                    safeWorldName(world), storeIds.count, seenPlayers, seenNpcs, removed, ms
+                    safeWorldName(world), storeIds.count(), seenPlayers, seenNpcs, removed, ms
             );
         }
     }
@@ -412,25 +412,30 @@ public final class HideEntityUiWorldRefresher {
      * Minimal primitive int hash set (open addressing).
      */
     private static final class IntHashSet {
-        final int[] values;
-        final boolean[] used;
-        int count;
-        final int size;
+        private int[] values;
+        private boolean[] used;
+        private int mask;
+        private int count;
 
         IntHashSet(int initialCapacity) {
             int cap = 1;
             while (cap < initialCapacity) cap <<= 1;
-            this.values = new int[cap];
-            this.used = new boolean[cap];
-            this.size = cap;
-            this.count = 0;
+            values = new int[cap];
+            used = new boolean[cap];
+            mask = cap - 1;
+            count = 0;
         }
 
         void add(int v) {
-            int idx = mix32(v) & (size - 1);
+            // Resize at ~50% load to keep probes short.
+            if ((count + 1) * 2 >= values.length) {
+                rehash(values.length << 1);
+            }
+
+            int idx = mix32(v) & mask;
             while (used[idx]) {
                 if (values[idx] == v) return;
-                idx = (idx + 1) & (size - 1);
+                idx = (idx + 1) & mask;
             }
             used[idx] = true;
             values[idx] = v;
@@ -439,6 +444,38 @@ public final class HideEntityUiWorldRefresher {
 
         boolean isEmpty() {
             return count == 0;
+        }
+
+        int capacity() {
+            return values.length;
+        }
+
+        int count() {
+            return count;
+        }
+
+        int getValueAt(int idx) {
+            return values[idx];
+        }
+
+        boolean isUsedAt(int idx) {
+            return used[idx];
+        }
+
+        private void rehash(int newCap) {
+            final int[] oldValues = values;
+            final boolean[] oldUsed = used;
+
+            values = new int[newCap];
+            used = new boolean[newCap];
+            mask = newCap - 1;
+            count = 0;
+
+            for (int i = 0; i < oldValues.length; i++) {
+                if (oldUsed[i]) {
+                    add(oldValues[i]);
+                }
+            }
         }
 
         private static int mix32(int x) {
