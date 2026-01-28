@@ -51,7 +51,12 @@ public final class PlayerMapMarkerController {
     private static final Map<World, WorldMapManager.MarkerProvider> ORIGINAL_PROVIDERS =
             Collections.synchronizedMap(new WeakHashMap<>());
 
-    /** Reflection caches to tolerate minor API changes between server builds. */
+    
+
+    /** Tracks whether we have captured the original provider for a given world (even if it was null). */
+    private static final java.util.Set<World> ORIGINAL_CAPTURED =
+            java.util.Collections.newSetFromMap(java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>()));
+/** Reflection caches to tolerate minor API changes between server builds. */
     private static final ConcurrentHashMap<Class<?>, Accessor> ACCESSOR_CACHE = new ConcurrentHashMap<>();
 
     /** Ensures we don't spam logs if reflection lookup fails. */
@@ -143,13 +148,30 @@ public final class PlayerMapMarkerController {
             return;
         }
 
-        // Capture original provider once per world.
-        ORIGINAL_PROVIDERS.computeIfAbsent(world, w -> accessor.getProvider(manager, PLAYER_ICONS_KEY));
+        // Capture original provider once per world (even if it is null).
+        captureOriginalIfNeeded(world, accessor, manager);
 
         if (hide) {
             accessor.setProvider(manager, PLAYER_ICONS_KEY, NOOP_PROVIDER);
         } else {
             restoreOnWorldThread(world);
+        }
+    }
+
+
+    /**
+     * Capture and remember the original provider for this world, exactly once.
+     *
+     * <p>We must record even a {@code null} original provider; using {@code computeIfAbsent} would not store nulls
+     * and would therefore re-capture on every call.</p>
+     */
+    private static void captureOriginalIfNeeded(@Nonnull World world,
+                                                @Nonnull Accessor accessor,
+                                                @Nonnull WorldMapManager manager) {
+        synchronized (ORIGINAL_PROVIDERS) {
+            if (ORIGINAL_CAPTURED.contains(world)) return;
+            ORIGINAL_CAPTURED.add(world);
+            ORIGINAL_PROVIDERS.put(world, accessor.getProvider(manager, PLAYER_ICONS_KEY)); // may be null
         }
     }
 
@@ -169,16 +191,22 @@ public final class PlayerMapMarkerController {
         if (accessor == null) return;
 
         final WorldMapManager.MarkerProvider original;
+        final boolean captured;
+
         synchronized (ORIGINAL_PROVIDERS) {
+            captured = ORIGINAL_CAPTURED.contains(world);
             original = ORIGINAL_PROVIDERS.get(world);
         }
+
+        // If we never overrode this world, do not touch anything.
+        if (!captured) return;
 
         if (original != null) {
             accessor.setProvider(manager, PLAYER_ICONS_KEY, original);
         } else {
             accessor.removeProvider(manager, PLAYER_ICONS_KEY);
         }
-    }
+}
 
     /**
      * Resolve cached accessor for a given manager instance.
@@ -248,35 +276,36 @@ public final class PlayerMapMarkerController {
             this.providerMapField = providerMapField;
         }
 
-/**
- * Read the internal providers map if it looks like {@code Map<String, MarkerProvider>}.
- */
-@Nullable
-@SuppressWarnings("unchecked")
-private Map<Object, Object> tryGetProviderMap(@Nonnull WorldMapManager manager) {
-    if (providerMapField == null) return null;
-    try {
-        Object v = providerMapField.get(manager);
-        if (!(v instanceof Map<?, ?> raw)) return null;
+        /**
+         * Read the internal providers map if it looks like {@code Map<String, MarkerProvider>}.
+         */
+        @Nullable
+        @SuppressWarnings("unchecked")
+        private Map<Object, Object> tryGetProviderMap(@Nonnull WorldMapManager manager) {
+            if (providerMapField == null) return null;
+            try {
+                Object v = providerMapField.get(manager);
+                if (!(v instanceof Map<?, ?> raw)) return null;
 
-        // Quick plausibility check: if it's empty we can't validate; accept it.
-        if (raw.isEmpty()) {
-            return (Map<Object, Object>) raw;
-        }
+                // Quick plausibility check: if it's empty we can't validate; accept it.
+                if (raw.isEmpty()) {
+                    return (Map<Object, Object>) raw;
+                }
 
-        // Validate at least one entry: String key and MarkerProvider value (or null).
-        for (Map.Entry<?, ?> e : raw.entrySet()) {
-            Object k = e.getKey();
-            Object val = e.getValue();
-            if (k instanceof String && (val == null || val instanceof WorldMapManager.MarkerProvider)) {
-                return (Map<Object, Object>) raw;
+                // Validate at least one entry: String key and MarkerProvider value (or null).
+                for (Map.Entry<?, ?> e : raw.entrySet()) {
+                    Object k = e.getKey();
+                    Object val = e.getValue();
+                    if (k instanceof String && (val == null || val instanceof WorldMapManager.MarkerProvider)) {
+                        return (Map<Object, Object>) raw;
+                    }
+                    break;
+                }
+            } catch (Throwable ignored) {
             }
-            break;
+            return null;
         }
-    } catch (Throwable ignored) {
-    }
-    return null;
-}
+
 
         /**
          * Resolve how to get/set providers for a given WorldMapManager class.
@@ -305,7 +334,7 @@ private Map<Object, Object> tryGetProviderMap(@Nonnull WorldMapManager manager) 
                     return (r instanceof WorldMapManager.MarkerProvider p) ? p : null;
                 }
                 Map<Object, Object> map = tryGetProviderMap(manager);
-                    if (map != null) {
+                if (map != null) {
                         Object r = map.get(key);
                         return (r instanceof WorldMapManager.MarkerProvider p) ? p : null;
                     }
@@ -322,7 +351,7 @@ private Map<Object, Object> tryGetProviderMap(@Nonnull WorldMapManager manager) 
         public void setProvider(@Nonnull WorldMapManager manager, @Nonnull String key, @Nonnull WorldMapManager.MarkerProvider provider) {
             try {
                 Map<Object, Object> map = tryGetProviderMap(manager);
-                    if (map != null) {
+                if (map != null) {
                         map.put(key, provider);
                         return;
                     }
@@ -342,7 +371,7 @@ private Map<Object, Object> tryGetProviderMap(@Nonnull WorldMapManager manager) 
         public void removeProvider(@Nonnull WorldMapManager manager, @Nonnull String key) {
             try {
                 Map<Object, Object> map = tryGetProviderMap(manager);
-                    if (map != null) {
+                if (map != null) {
                         map.remove(key);
                         return;
                     }
@@ -413,7 +442,7 @@ private Map<Object, Object> tryGetProviderMap(@Nonnull WorldMapManager manager) 
          * Try to locate an internal providers map field inside WorldMapManager.
          */
         @Nullable
-                private static Field findProviderMapField(@Nonnull Class<?> cls) {
+        private static Field findProviderMapField(@Nonnull Class<?> cls) {
             Field best = null;
 
             for (Class<?> c = cls; c != null; c = c.getSuperclass()) {

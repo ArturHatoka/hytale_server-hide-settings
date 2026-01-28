@@ -49,14 +49,14 @@ public class HideEnemyHealthConfig {
         return npcs;
     }
 
-/**
- * @return non-null map settings (creates defaults if missing)
- */
-@Nonnull
-public MapSettings getMap() {
-    if (map == null) map = new MapSettings();
-    return map;
-}
+    /**
+     * @return non-null map settings (creates defaults if missing)
+     */
+    @Nonnull
+    public MapSettings getMap() {
+        if (map == null) map = new MapSettings();
+        return map;
+    }
 
     /**
      * Normalize config after load: ensure nested objects are never null.
@@ -122,20 +122,20 @@ public MapSettings getMap() {
         }
     }
 
-/**
- * World map (minimap / map screen) related settings.
- */
-public static final class MapSettings {
-
     /**
-     * If true, hides player markers (icons) on the world map by overriding the built-in
-     * {@code "playerIcons"} marker provider.
-     *
-     * <p>This does not affect objective markers or other map layers.</p>
+     * World map (minimap / map screen) related settings.
      */
-    @SerializedName("hidePlayerMarkers")
-    public boolean hidePlayerMarkers = false;
-}
+    public static final class MapSettings {
+
+        /**
+         * If true, hides player markers (icons) on the world map by overriding the built-in
+         * {@code "playerIcons"} marker provider.
+         *
+         * <p>This does not affect objective markers or other map layers.</p>
+         */
+        @SerializedName("hidePlayerMarkers")
+        public boolean hidePlayerMarkers = false;
+    }
 
     /**
      * Target-specific settings (players or NPCs).
