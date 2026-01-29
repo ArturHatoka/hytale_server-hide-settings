@@ -2,6 +2,7 @@ package com.example.hideenemyhealth.commands;
 
 import com.example.hideenemyhealth.HideEnemyHealthPlugin;
 import com.example.hideenemyhealth.systems.HideEntityUiSystem;
+import com.example.hideenemyhealth.systems.HidePlayerNameplateSystem;
 import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.command.system.CommandContext;
 import com.hypixel.hytale.server.core.command.system.basecommands.CommandBase;
@@ -40,6 +41,7 @@ public class ReloadSubCommand extends CommandBase {
 
         HideEnemyHealthPlugin.getInstance().reloadConfig();
         HideEntityUiSystem.refreshLoadedEntities();
+        HidePlayerNameplateSystem.refreshLoadedPlayers();
         commandContext.sendMessage(Message.raw(HideEnemyHealthPlugin.DISPLAY_NAME + ": config reloaded and applied."));
     }
 }

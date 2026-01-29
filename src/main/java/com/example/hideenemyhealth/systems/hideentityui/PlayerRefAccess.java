@@ -9,8 +9,11 @@ import javax.annotation.Nullable;
 
 /**
  * Best-effort extraction of ECS refs from public player references.
+ *
+ * <p>This helper is shared across multiple systems (e.g. hideentityui, hidenameplate).
+ * It must therefore be {@code public}.</p>
  */
-final class PlayerRefAccess {
+public final class PlayerRefAccess {
 
     private PlayerRefAccess() {
     }
@@ -19,7 +22,7 @@ final class PlayerRefAccess {
      * Extract an ECS ref from {@link PlayerRef}, if API provides {@code getReference()}.
      */
     @Nullable
-    static Ref<EntityStore> safeGetPlayerEntityRef(@Nonnull final PlayerRef playerRef) {
+    public static Ref<EntityStore> safeGetPlayerEntityRef(@Nonnull final PlayerRef playerRef) {
         try {
             @SuppressWarnings("unchecked")
             final Ref<EntityStore> ref = (Ref<EntityStore>) playerRef.getReference();

@@ -40,6 +40,7 @@ public class InfoSubCommand extends CommandBase {
         final boolean playersHide = cfg.getPlayers().hideHealthBar || cfg.getPlayers().hideDamageNumbers;
         final boolean npcsHide = cfg.getNpcs().hideHealthBar || cfg.getNpcs().hideDamageNumbers;
         commandContext.sendMessage(Message.raw("  players.hideOverheadUI: " + playersHide));
+        commandContext.sendMessage(Message.raw("  players.hideNameplates: " + cfg.getPlayers().hideNameplate));
         commandContext.sendMessage(Message.raw("  npcs.hideOverheadUI: " + npcsHide));
         commandContext.sendMessage(Message.raw("  map.hidePlayerMarkers: " + cfg.getMap().hidePlayerMarkers));
         commandContext.sendMessage(Message.raw("  admin permission: " + HideEnemyHealthPlugin.ADMIN_PERMISSION));

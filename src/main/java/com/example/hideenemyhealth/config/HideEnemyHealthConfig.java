@@ -168,6 +168,16 @@ public class HideEnemyHealthConfig {
         public boolean hideDamageNumbers = false;
 
         /**
+         * If true, hides player nameplates (nicknames above the head).
+         *
+         * <p>This is independent from overhead combat UI (HP bars / damage numbers).
+         * The plugin will remove the {@code Nameplate} component from player entities and
+         * restore it when disabled.</p>
+         */
+        @SerializedName("hideNameplate")
+        public boolean hideNameplate = false;
+
+        /**
          * Default settings for players.
          */
         @Nonnull
@@ -175,6 +185,7 @@ public class HideEnemyHealthConfig {
             TargetSettings s = new TargetSettings();
             s.hideHealthBar = true;          // hide HP bar by default
             s.hideDamageNumbers = false;     // keep damage numbers by default
+            s.hideNameplate = false;         // keep nameplates by default
             return s;
         }
 
@@ -186,6 +197,7 @@ public class HideEnemyHealthConfig {
             TargetSettings s = new TargetSettings();
             s.hideHealthBar = true;
             s.hideDamageNumbers = false;
+            s.hideNameplate = false;
             return s;
         }
     }

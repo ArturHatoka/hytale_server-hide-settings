@@ -4,6 +4,8 @@ import com.example.hideenemyhealth.commands.HideEnemyHealthPluginCommand;
 import com.example.hideenemyhealth.config.ConfigManager;
 import com.example.hideenemyhealth.config.HideEnemyHealthConfig;
 import com.example.hideenemyhealth.systems.HideEntityUiSystem;
+import com.example.hideenemyhealth.systems.HidePlayerNameplateChangeSystem;
+import com.example.hideenemyhealth.systems.HidePlayerNameplateSystem;
 import com.example.hideenemyhealth.systems.hideentityui.EntityUiBaselineCache;
 import com.example.hideenemyhealth.systems.hideentityui.UiComponentCache;
 import com.example.hideenemyhealth.worldmap.PlayerMapMarkerController;
@@ -118,6 +120,7 @@ public final class HideEnemyHealthPlugin extends JavaPlugin {
     public void reloadConfig() {
         config = loadConfig();
         HideEntityUiSystem.setConfig(config);
+        HidePlayerNameplateSystem.setConfig(config);
 
         // Apply map marker settings to loaded worlds.
         try {
@@ -151,6 +154,9 @@ public final class HideEnemyHealthPlugin extends JavaPlugin {
 
         // Apply to already loaded entities
         HideEntityUiSystem.refreshLoadedEntities();
+
+        // Apply player nameplate settings to already loaded players
+        HidePlayerNameplateSystem.refreshLoadedPlayers();
 
         // Apply map marker settings to already loaded worlds
         try {
@@ -193,9 +199,16 @@ public final class HideEnemyHealthPlugin extends JavaPlugin {
         } catch (Throwable ignored) {
         }
 
+        // Best-effort restore player nameplates (avoid leaving them hidden on hot reload).
+        try {
+            HidePlayerNameplateSystem.forceRestoreLoadedPlayers();
+        } catch (Throwable ignored) {
+        }
+
         // Defensive cleanup to avoid stale static state after hot reload.
         try {
             EntityUiBaselineCache.clearAll();
+            com.example.hideenemyhealth.systems.hidenameplate.NameplateBaselineCache.clearAll();
             UiComponentCache.resetCache();
         } catch (Throwable ignored) {
         }
@@ -267,6 +280,10 @@ public final class HideEnemyHealthPlugin extends JavaPlugin {
         try {
             getEntityStoreRegistry().registerSystem(new HideEntityUiSystem(HideEntityUiSystem.Target.ALL));
             LOGGER.at(Level.INFO).log("%s Registered HideEntityUiSystem (ALL)", LOG_PREFIX);
+
+            getEntityStoreRegistry().registerSystem(new HidePlayerNameplateSystem());
+            getEntityStoreRegistry().registerSystem(new HidePlayerNameplateChangeSystem());
+            LOGGER.at(Level.INFO).log("%s Registered HidePlayerNameplate systems", LOG_PREFIX);
         } catch (Throwable t) {
             LOGGER.at(Level.WARNING).withCause(t).log("%s Failed to register ECS systems", LOG_PREFIX);
         }

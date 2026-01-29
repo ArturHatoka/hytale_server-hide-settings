@@ -76,6 +76,26 @@ Group #Root {
         Anchor: (Height: 48);
 
         Label {
+          Text: "Players: Hide nameplates";
+          Anchor: (Height: 32);
+          Style: (FontSize: 16, TextColor: #ffffff, HorizontalAlignment: Start);
+          FlexWeight: 1;
+        }
+
+        TextButton #TogglePlayersNameplatesButton {
+          Text: "OFF";
+          Anchor: (Width: 160, Height: 36);
+          Style: @PrimaryButton;
+        }
+      }
+
+      Group { Anchor: (Height: 10); }
+
+      Group {
+        LayoutMode: Center;
+        Anchor: (Height: 48);
+
+        Label {
           Text: "NPCs: Hide overhead UI";
           Anchor: (Height: 32);
           Style: (FontSize: 16, TextColor: #ffffff, HorizontalAlignment: Start);
@@ -90,31 +110,30 @@ Group #Root {
       }
 
       Group { Anchor: (Height: 14); }
+      Group { Anchor: (Height: 10); }
 
-Group { Anchor: (Height: 10); }
+      Group {
+        LayoutMode: Center;
+        Anchor: (Height: 48);
 
-Group {
-  LayoutMode: Center;
-  Anchor: (Height: 48);
+        Label {
+          Text: "Map: Hide player markers";
+          Anchor: (Height: 32);
+          Style: (FontSize: 16, TextColor: #ffffff, HorizontalAlignment: Start);
+          FlexWeight: 1;
+        }
 
-  Label {
-    Text: "Map: Hide player markers";
-    Anchor: (Height: 32);
-    Style: (FontSize: 16, TextColor: #ffffff, HorizontalAlignment: Start);
-    FlexWeight: 1;
-  }
+        TextButton #ToggleMapPlayersButton {
+          Text: "OFF";
+          Anchor: (Width: 160, Height: 36);
+          Style: @PrimaryButton;
+        }
+      }
 
-  TextButton #ToggleMapPlayersButton {
-    Text: "OFF";
-    Anchor: (Width: 160, Height: 36);
-    Style: @PrimaryButton;
-  }
-}
-
-Group { Anchor: (Height: 14); }
+      Group { Anchor: (Height: 14); }
 
       Label #HintText {
-        Text: "Hiding applies immediately (for loaded entities). Showing again may require relog.";
+        Text: "Changes apply immediately. Overhead UI restore may require relog.";
         Anchor: (Height: 22);
         Style: (FontSize: 12, TextColor: #6e7da1, HorizontalAlignment: Center);
       }

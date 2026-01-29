@@ -3,6 +3,7 @@ package com.example.hideenemyhealth.ui;
 import com.example.hideenemyhealth.HideEnemyHealthPlugin;
 import com.example.hideenemyhealth.config.HideEnemyHealthConfig;
 import com.example.hideenemyhealth.systems.HideEntityUiSystem;
+import com.example.hideenemyhealth.systems.HidePlayerNameplateSystem;
 import com.example.hideenemyhealth.worldmap.PlayerMapMarkerController;
 import com.hypixel.hytale.codec.Codec;
 import com.hypixel.hytale.codec.KeyedCodec;
@@ -61,6 +62,7 @@ public class HideEnemyHealthDashboardUI extends InteractiveCustomUIPage<HideEnem
 
         // Bind buttons to actions
         bind(evt, "#TogglePlayersUiButton", "toggle_players_ui");
+        bind(evt, "#TogglePlayersNameplatesButton", "toggle_players_nameplates");
         bind(evt, "#ToggleNpcsUiButton", "toggle_npcs_ui");
         bind(evt, "#ToggleMapPlayersButton", "toggle_map_players");
         bind(evt, "#RefreshButton", "refresh");
@@ -92,6 +94,7 @@ public class HideEnemyHealthDashboardUI extends InteractiveCustomUIPage<HideEnem
         final boolean npcsHide = cfg.getNpcs().hideHealthBar || cfg.getNpcs().hideDamageNumbers;
 
         cmd.set("#TogglePlayersUiButton.Text", playersHide ? "ON" : "OFF");
+        cmd.set("#TogglePlayersNameplatesButton.Text", cfg.getPlayers().hideNameplate ? "ON" : "OFF");
         cmd.set("#ToggleNpcsUiButton.Text", npcsHide ? "ON" : "OFF");
 
         cmd.set("#ToggleMapPlayersButton.Text", cfg.getMap().hidePlayerMarkers ? "ON" : "OFF");
@@ -132,6 +135,7 @@ public class HideEnemyHealthDashboardUI extends InteractiveCustomUIPage<HideEnem
 
         boolean changed = false;
         boolean refreshPlayers = false;
+        boolean refreshNameplates = false;
         boolean refreshNpcs = false;
         boolean refreshMap = false;
 
@@ -142,6 +146,11 @@ public class HideEnemyHealthDashboardUI extends InteractiveCustomUIPage<HideEnem
                 cfg.getPlayers().hideDamageNumbers = newVal;
                 changed = true;
                 refreshPlayers = true;
+            }
+            case "toggle_players_nameplates" -> {
+                cfg.getPlayers().hideNameplate = !cfg.getPlayers().hideNameplate;
+                changed = true;
+                refreshNameplates = true;
             }
             case "toggle_npcs_ui" -> {
                 final boolean newVal = !(cfg.getNpcs().hideHealthBar || cfg.getNpcs().hideDamageNumbers);
@@ -159,6 +168,8 @@ public class HideEnemyHealthDashboardUI extends InteractiveCustomUIPage<HideEnem
                 // no config change, just re-apply
                 HideEntityUiSystem.setConfig(cfg);
                 HideEntityUiSystem.refreshLoadedEntities();
+                HidePlayerNameplateSystem.setConfig(cfg);
+                HidePlayerNameplateSystem.refreshLoadedPlayers();
                 PlayerMapMarkerController.applyToAllLoadedWorlds(cfg);
                 sendStatus("Applied.");
                 return;
@@ -179,19 +190,26 @@ public class HideEnemyHealthDashboardUI extends InteractiveCustomUIPage<HideEnem
         cfg.normalize();
         plugin.saveConfig();
         HideEntityUiSystem.setConfig(cfg);
+        HidePlayerNameplateSystem.setConfig(cfg);
 
         // Apply map marker changes if requested.
         if (refreshMap) {
             PlayerMapMarkerController.applyToAllLoadedWorlds(cfg);
         }
 
-        // Refresh only what changed (players or NPCs). If both flags are false for some reason, refresh all.
-        if (refreshPlayers && !refreshNpcs) {
-            HideEntityUiSystem.refreshLoadedPlayers();
-        } else if (refreshNpcs && !refreshPlayers) {
-            HideEntityUiSystem.refreshLoadedNpcs();
-        } else {
-            HideEntityUiSystem.refreshLoadedEntities();
+        if (refreshNameplates) {
+            HidePlayerNameplateSystem.refreshLoadedPlayers();
+        }
+
+        // Refresh overhead UI only if those settings changed.
+        if (refreshPlayers || refreshNpcs) {
+            if (refreshPlayers && !refreshNpcs) {
+                HideEntityUiSystem.refreshLoadedPlayers();
+            } else if (refreshNpcs && !refreshPlayers) {
+                HideEntityUiSystem.refreshLoadedNpcs();
+            } else {
+                HideEntityUiSystem.refreshLoadedEntities();
+            }
         }
 
         // Update UI widgets
