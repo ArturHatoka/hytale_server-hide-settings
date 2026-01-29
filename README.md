@@ -1,27 +1,31 @@
-# HideEnemyHealth (Hytale Server Mod/Plugin)
+# Server Hide Settings (Hytale Server Mod/Plugin)
 
-A server-side mod/plugin for **Hytale** that hides **HP bars above entities** and (optionally) **damage/heal numbers**. It can be controlled **in-game via an admin UI dashboard** and also supports a disk-based config.
+A server-side mod/plugin for **Hytale** that hides **overhead combat UI** (HP bars + combat text) and can also hide **player map markers**. It is controlled **in-game via an admin Dashboard UI** and supports a disk-based config.
 
-> Goal: reduce visual clutter in combat and keep the server’s visuals cleaner — without requiring a client mod.
+> Goal: reduce visual clutter and keep the server visuals cleaner — without requiring a client mod.
 
 ---
 
 ## Features
 
-- ✅ Hide **HP bars** above entities
-- ✅ Hide **combat text** (damage/heal numbers)
-- ✅ Separate settings for:
+- ✅ Hide **overhead UI** above entities (HP bars + combat text)
+- ✅ Works for:
   - Players (`players`)
   - NPCs (`npcs`)
+- ✅ Hide **player markers on the world map**
 - ✅ In-game admin **Dashboard UI** (ON/OFF toggles)
 - ✅ Saves settings to a file and applies them live (refresh)
-- ✅ Server-side approach: modifies an entity’s `UIComponentList` → the client renders less UI
+- ✅ Server-side approach:
+  - modifies an entity’s `UIComponentList` (client renders less overhead UI)
+  - overrides the map icon provider (hides player markers)
+
+> Note: On some server/client builds, hiding HP may also hide combat text even if configured separately. The Dashboard UI reflects the effective behavior.
 
 ---
 
 ## Requirements
 
-- Hytale Server (compatibility depends on the Server API)
+- Hytale Server (compatibility depends on the Server API build)
 - Java 25
 
 ---
@@ -31,12 +35,12 @@ A server-side mod/plugin for **Hytale** that hides **HP bars above entities** an
 1. Build the `.jar` (see **Build** below) or use a prebuilt release.
 2. Place the mod into your server folder (commonly `mods/` — depends on your setup).
 3. Start the server.
-4. Join with an account that has the `hideenemyhealth.admin` permission or get /op.
+4. Join with an account that has the `serverhidesettings.admin` permission (or equivalent admin role).
 5. Open the dashboard:
    - `/hid ui`
 
 After the first start, the config file will be created:
-- `mods/HideEnemyHealth/config.json`
+- `mods/ServerHideSettings/config.json`
 
 ---
 
@@ -53,15 +57,15 @@ Base command: `hid`
 
 ## Permissions
 
-- `hideenemyhealth.admin` — access to the UI and admin functions
+- `serverhidesettings.admin` — access to the Dashboard UI and admin functions
 
-> Important: make sure your server’s permission system actually grants this permission to the correct role/player.
+> Make sure your server permission system grants this permission to the correct role/player.
 
 ---
 
 ## Configuration
 
-File: `mods/HideEnemyHealth/config.json`
+File: `mods/ServerHideSettings/config.json`
 
 Example:
 ```json
@@ -69,10 +73,13 @@ Example:
   "enabled": true,
   "players": {
     "hideHealthBar": true,
-    "hideDamageNumbers": false
+    "hideDamageNumbers": true
   },
   "npcs": {
     "hideHealthBar": true,
-    "hideDamageNumbers": false
+    "hideDamageNumbers": true
+  },
+  "map": {
+    "hidePlayerMarkers": true
   }
 }
