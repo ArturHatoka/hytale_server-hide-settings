@@ -60,10 +60,8 @@ public class HideEnemyHealthDashboardUI extends InteractiveCustomUIPage<HideEnem
         cmd.append(LAYOUT);
 
         // Bind buttons to actions
-        bind(evt, "#TogglePlayersHealthButton", "toggle_players_health");
-        bind(evt, "#TogglePlayersDamageButton", "toggle_players_damage");
-        bind(evt, "#ToggleNpcsHealthButton", "toggle_npcs_health");
-        bind(evt, "#ToggleNpcsDamageButton", "toggle_npcs_damage");
+        bind(evt, "#TogglePlayersUiButton", "toggle_players_ui");
+        bind(evt, "#ToggleNpcsUiButton", "toggle_npcs_ui");
         bind(evt, "#ToggleMapPlayersButton", "toggle_map_players");
         bind(evt, "#RefreshButton", "refresh");
         bind(evt, "#CloseButton", "close");
@@ -90,11 +88,11 @@ public class HideEnemyHealthDashboardUI extends InteractiveCustomUIPage<HideEnem
     private void syncUI(@Nonnull UICommandBuilder cmd) {
         final HideEnemyHealthConfig cfg = HideEnemyHealthPlugin.getInstance().getConfig();
 
-        cmd.set("#TogglePlayersHealthButton.Text", cfg.getPlayers().hideHealthBar ? "ON" : "OFF");
-        cmd.set("#TogglePlayersDamageButton.Text", cfg.getPlayers().hideDamageNumbers ? "ON" : "OFF");
+        final boolean playersHide = cfg.getPlayers().hideHealthBar || cfg.getPlayers().hideDamageNumbers;
+        final boolean npcsHide = cfg.getNpcs().hideHealthBar || cfg.getNpcs().hideDamageNumbers;
 
-        cmd.set("#ToggleNpcsHealthButton.Text", cfg.getNpcs().hideHealthBar ? "ON" : "OFF");
-        cmd.set("#ToggleNpcsDamageButton.Text", cfg.getNpcs().hideDamageNumbers ? "ON" : "OFF");
+        cmd.set("#TogglePlayersUiButton.Text", playersHide ? "ON" : "OFF");
+        cmd.set("#ToggleNpcsUiButton.Text", npcsHide ? "ON" : "OFF");
 
         cmd.set("#ToggleMapPlayersButton.Text", cfg.getMap().hidePlayerMarkers ? "ON" : "OFF");
     }
@@ -138,23 +136,17 @@ public class HideEnemyHealthDashboardUI extends InteractiveCustomUIPage<HideEnem
         boolean refreshMap = false;
 
         switch (data.action) {
-            case "toggle_players_health" -> {
-                cfg.getPlayers().hideHealthBar = !cfg.getPlayers().hideHealthBar;
+            case "toggle_players_ui" -> {
+                final boolean newVal = !(cfg.getPlayers().hideHealthBar || cfg.getPlayers().hideDamageNumbers);
+                cfg.getPlayers().hideHealthBar = newVal;
+                cfg.getPlayers().hideDamageNumbers = newVal;
                 changed = true;
                 refreshPlayers = true;
             }
-            case "toggle_players_damage" -> {
-                cfg.getPlayers().hideDamageNumbers = !cfg.getPlayers().hideDamageNumbers;
-                changed = true;
-                refreshPlayers = true;
-            }
-            case "toggle_npcs_health" -> {
-                cfg.getNpcs().hideHealthBar = !cfg.getNpcs().hideHealthBar;
-                changed = true;
-                refreshNpcs = true;
-            }
-            case "toggle_npcs_damage" -> {
-                cfg.getNpcs().hideDamageNumbers = !cfg.getNpcs().hideDamageNumbers;
+            case "toggle_npcs_ui" -> {
+                final boolean newVal = !(cfg.getNpcs().hideHealthBar || cfg.getNpcs().hideDamageNumbers);
+                cfg.getNpcs().hideHealthBar = newVal;
+                cfg.getNpcs().hideDamageNumbers = newVal;
                 changed = true;
                 refreshNpcs = true;
             }

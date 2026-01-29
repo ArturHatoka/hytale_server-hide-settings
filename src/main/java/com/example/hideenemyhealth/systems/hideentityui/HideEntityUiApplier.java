@@ -124,9 +124,25 @@ public final class HideEntityUiApplier {
 
         if (!UiComponentCache.ensureCache()) return false;
 
-        // Compute from the CURRENT list so HP/Damage toggles stay independent even if UI IDs
-        // appear later during the entity lifetime (e.g., combat text).
-        final int[] desired = UiComponentListFilterSupport.computeDesiredIds(currentIds, settings);
+        // Capture a baseline snapshot the first time we see this entity.
+        // We use it defensively to preserve unrelated UI IDs when doing "hot hide" refreshes.
+        final byte kind = isPlayer ? EntityUiBaselineCache.KIND_PLAYER
+                : (isNpc ? EntityUiBaselineCache.KIND_NPC : EntityUiBaselineCache.KIND_UNKNOWN);
+        final long key = EntityUiBaselineCache.entityKey(entityRef);
+        final int[] baselineIds = EntityUiBaselineCache.putBaselineIfAbsent(key, currentIds, kind);
+
+        // Compute from the CURRENT list so we never introduce new IDs by default.
+        int[] desired = UiComponentListFilterSupport.computeDesiredIds(currentIds, settings);
+
+        // If only one category is hidden, ensure the other category's IDs that were present in the baseline
+        // remain present. Some builds omit certain UI IDs (e.g., combat text) until first use; without this,
+        // toggling "Hide HP" may also effectively remove damage numbers.
+        if (settings.hideHealthBar && !settings.hideDamageNumbers) {
+            desired = UiComponentListFilterSupport.appendMissingFromBaseline(desired, baselineIds, UiComponentCache::isCombatTextId);
+        } else if (settings.hideDamageNumbers && !settings.hideHealthBar) {
+            desired = UiComponentListFilterSupport.appendMissingFromBaseline(desired, baselineIds, UiComponentCache::isHealthStatId);
+        }
+
         if (Arrays.equals(currentIds, desired)) {
             return false;
         }

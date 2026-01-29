@@ -56,13 +56,13 @@ Group #Root {
         Anchor: (Height: 48);
 
         Label {
-          Text: "Players: Hide HP bar";
+          Text: "Players: Hide overhead UI";
           Anchor: (Height: 32);
           Style: (FontSize: 16, TextColor: #ffffff, HorizontalAlignment: Start);
           FlexWeight: 1;
         }
 
-        TextButton #TogglePlayersHealthButton {
+        TextButton #TogglePlayersUiButton {
           Text: "ON";
           Anchor: (Width: 160, Height: 36);
           Style: @PrimaryButton;
@@ -76,54 +76,14 @@ Group #Root {
         Anchor: (Height: 48);
 
         Label {
-          Text: "Players: Hide damage numbers";
+          Text: "NPCs: Hide overhead UI";
           Anchor: (Height: 32);
           Style: (FontSize: 16, TextColor: #ffffff, HorizontalAlignment: Start);
           FlexWeight: 1;
         }
 
-        TextButton #TogglePlayersDamageButton {
-          Text: "OFF";
-          Anchor: (Width: 160, Height: 36);
-          Style: @PrimaryButton;
-        }
-      }
-
-      Group { Anchor: (Height: 10); }
-
-      Group {
-        LayoutMode: Center;
-        Anchor: (Height: 48);
-
-        Label {
-          Text: "NPCs: Hide HP bar";
-          Anchor: (Height: 32);
-          Style: (FontSize: 16, TextColor: #ffffff, HorizontalAlignment: Start);
-          FlexWeight: 1;
-        }
-
-        TextButton #ToggleNpcsHealthButton {
+        TextButton #ToggleNpcsUiButton {
           Text: "ON";
-          Anchor: (Width: 160, Height: 36);
-          Style: @PrimaryButton;
-        }
-      }
-
-      Group { Anchor: (Height: 10); }
-
-      Group {
-        LayoutMode: Center;
-        Anchor: (Height: 48);
-
-        Label {
-          Text: "NPCs: Hide damage numbers";
-          Anchor: (Height: 32);
-          Style: (FontSize: 16, TextColor: #ffffff, HorizontalAlignment: Start);
-          FlexWeight: 1;
-        }
-
-        TextButton #ToggleNpcsDamageButton {
-          Text: "OFF";
           Anchor: (Width: 160, Height: 36);
           Style: @PrimaryButton;
         }
@@ -154,7 +114,7 @@ Group {
 Group { Anchor: (Height: 14); }
 
       Label #HintText {
-        Text: "Changes apply immediately (for loaded entities).";
+        Text: "Hiding applies immediately (for loaded entities). Showing again may require relog.";
         Anchor: (Height: 22);
         Style: (FontSize: 12, TextColor: #6e7da1, HorizontalAlignment: Center);
       }

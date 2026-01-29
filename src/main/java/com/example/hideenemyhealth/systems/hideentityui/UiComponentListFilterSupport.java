@@ -4,6 +4,7 @@ import com.example.hideenemyhealth.config.HideEnemyHealthConfig;
 
 import javax.annotation.Nonnull;
 import java.util.Arrays;
+import java.util.function.IntPredicate;
 
 /**
  * Pure helpers for computing the final {@code componentIds} list.
@@ -44,7 +45,53 @@ final class UiComponentListFilterSupport {
         return (count == out.length) ? currentIds.clone() : Arrays.copyOf(out, count);
     }
 
+    
     /**
+     * Append missing IDs from a baseline list, but only those matching {@code selector}.
+     *
+     * <p>This is used to keep "hide HP" and "hide damage" independent when the current entity list
+     * temporarily omits one category (some builds only attach CombatText UI after first hit).
+     * We never append IDs that were not present in the entity's baseline snapshot.</p>
+     *
+     * @param desired    current desired list (usually derived from currentIds by removing hidden IDs)
+     * @param baseline   baseline IDs captured before the plugin first modified the entity
+     * @param selector   selects which baseline IDs are eligible to be appended
+     * @return desired list with missing selected baseline IDs appended (order preserved for appended items)
+     */
+    @Nonnull
+    static int[] appendMissingFromBaseline(@Nonnull final int[] desired,
+                                          @Nonnull final int[] baseline,
+                                          @Nonnull final IntPredicate selector) {
+        if (baseline.length == 0) return desired;
+
+        int extra = 0;
+        for (int id : baseline) {
+            if (!selector.test(id)) continue;
+            boolean present = false;
+            for (int d : desired) {
+                if (d == id) { present = true; break; }
+            }
+            if (!present) extra++;
+        }
+
+        if (extra == 0) return desired;
+
+        final int[] out = Arrays.copyOf(desired, desired.length + extra);
+        int w = desired.length;
+
+        for (int id : baseline) {
+            if (!selector.test(id)) continue;
+            boolean present = false;
+            for (int d : desired) {
+                if (d == id) { present = true; break; }
+            }
+            if (!present) out[w++] = id;
+        }
+
+        return out;
+    }
+
+/**
      * Baseline must be a pure snapshot of the current list (deduped, preserving order).
      */
     @Nonnull

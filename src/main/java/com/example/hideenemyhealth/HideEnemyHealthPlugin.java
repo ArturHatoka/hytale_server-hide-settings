@@ -258,8 +258,13 @@ public final class HideEnemyHealthPlugin extends JavaPlugin {
      * Register ECS systems.
      */
     private void registerSystems() {
+        // Correctness first: many mob/entity types do not carry the NPCEntity/Player marker components
+        // on all server builds. Registering only PLAYER/NPC queries can therefore miss entities that still
+        // have a UIComponentList (HP bars, overhead UI).
+        //
+        // The ALL query (UIComponentList only) matches exactly what we need and restores spawn-time behaviour
+        // from the known-good 1.4.x builds.
         try {
-            // Keep the broad (ALL) system registered for correctness across server builds.
             getEntityStoreRegistry().registerSystem(new HideEntityUiSystem(HideEntityUiSystem.Target.ALL));
             LOGGER.at(Level.INFO).log("%s Registered HideEntityUiSystem (ALL)", LOG_PREFIX);
         } catch (Throwable t) {

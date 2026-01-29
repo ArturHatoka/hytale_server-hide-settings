@@ -1,8 +1,8 @@
 {
   "Group": "com.example",
   "Name": "Server Hide Settings",
-  "Version": "1.4.2",
-  "Description": "Server-side UI hide settings: overhead HP bars, damage numbers, and player map markers. Admin-controlled via in-game UI.",
+  "Version": "1.5.0",
+  "Description": "Server-side UI hide settings: overhead entity UI and player map markers. Admin-controlled via in-game UI.",
   "Authors": [
     {
       "Name": "Hatoka"

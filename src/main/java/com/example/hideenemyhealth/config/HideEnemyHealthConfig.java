@@ -66,6 +66,18 @@ public class HideEnemyHealthConfig {
         if (npcs == null) npcs = TargetSettings.defaultsForNpcs();
         if (map == null) map = new MapSettings();
 
+        // Current client/server builds can treat overhead HP bars and combat text as a single UI layer.
+        // To avoid misleading configurations (e.g., hide HP but keep damage), we normalize both flags
+        // to the same effective value. This preserves existing configs while keeping behaviour
+        // consistent and predictable.
+        final boolean playersHide = players.hideHealthBar || players.hideDamageNumbers;
+        players.hideHealthBar = playersHide;
+        players.hideDamageNumbers = playersHide;
+
+        final boolean npcsHide = npcs.hideHealthBar || npcs.hideDamageNumbers;
+        npcs.hideHealthBar = npcsHide;
+        npcs.hideDamageNumbers = npcsHide;
+
         if (debug == null) debug = new DebugSettings();
         debug.normalize();
     }
