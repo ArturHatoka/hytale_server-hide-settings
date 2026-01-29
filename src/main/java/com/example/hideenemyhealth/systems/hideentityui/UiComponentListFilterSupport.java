@@ -8,8 +8,8 @@ import java.util.Arrays;
 /**
  * Pure helpers for computing the final {@code componentIds} list.
  *
- * <p>Important invariant: we only ever <b>remove</b> IDs from a baseline snapshot.
- * We never introduce IDs that were not present originally.</p>
+ * <p>Important invariant: we only ever <b>remove</b> IDs from the provided source list.
+ * We never introduce new IDs.</p>
  */
 final class UiComponentListFilterSupport {
 
@@ -17,26 +17,31 @@ final class UiComponentListFilterSupport {
     }
 
     /**
-     * Compute final componentIds based on baseline (original list) and current hide settings.
+     * Compute final componentIds based on the current entity list and current hide settings.
+     *
+     * <p>We intentionally compute from the <b>current</b> list instead of a baseline snapshot.
+     * Some UI IDs (e.g., combat text) may be introduced later in an entity's lifetime.
+     * Using a baseline would unintentionally drop such IDs even when they should remain visible.
+     * This keeps "hide HP" and "hide damage" independent.</p>
      */
     @Nonnull
-    static int[] computeDesiredIds(@Nonnull final int[] baselineIds,
+    static int[] computeDesiredIds(@Nonnull final int[] currentIds,
                                    @Nonnull final HideEnemyHealthConfig.TargetSettings settings) {
 
         final boolean hideCombat = settings.hideDamageNumbers;
         final boolean hideHealth = settings.hideHealthBar;
 
-        final int[] out = new int[baselineIds.length];
+        final int[] out = new int[currentIds.length];
         int count = 0;
 
-        for (int id : baselineIds) {
+        for (int id : currentIds) {
             if (hideCombat && UiComponentCache.isCombatTextId(id)) continue;
             if (hideHealth && UiComponentCache.isHealthStatId(id)) continue;
             out[count++] = id;
         }
 
-        // Always return a new array (do not leak baseline array into entity component).
-        return (count == out.length) ? baselineIds.clone() : Arrays.copyOf(out, count);
+        // Always return a new array (do not leak the source array into the entity component).
+        return (count == out.length) ? currentIds.clone() : Arrays.copyOf(out, count);
     }
 
     /**

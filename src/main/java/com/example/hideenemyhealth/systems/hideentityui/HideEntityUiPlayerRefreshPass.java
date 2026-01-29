@@ -43,7 +43,10 @@ final class HideEntityUiPlayerRefreshPass {
                         if (ref == null || !ref.isValid()) continue;
 
                         stats[0]++;
-                        if (HideEntityUiApplier.applyForRefAndReport(ref, worldStore, commandBuffer, Boolean.FALSE)) {
+                        // Hot hide: update component list only (no component recreate).
+                        // Hot hide: force a component-level recreate so clients update already-spawned player UI
+                        // without requiring relog / re-stream.
+                        if (HideEntityUiApplier.applyForRefAndReport(ref, worldStore, commandBuffer, Boolean.FALSE, true)) {
                             stats[1]++;
                         }
                     }
@@ -78,7 +81,7 @@ final class HideEntityUiPlayerRefreshPass {
                 final Store<EntityStore> store = ref.getStore();
                 if (store == null) continue;
 
-                if (HideEntityUiApplier.applyForRefAndReport(ref, store, null, Boolean.FALSE)) {
+                if (HideEntityUiApplier.applyForRefAndReport(ref, store, null, Boolean.FALSE, false)) {
                     changed++;
                 }
             }

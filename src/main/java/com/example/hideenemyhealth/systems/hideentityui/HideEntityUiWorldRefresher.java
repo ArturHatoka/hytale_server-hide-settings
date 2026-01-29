@@ -91,7 +91,9 @@ public final class HideEntityUiWorldRefresher {
                         HideEntityUiBaselineGcPass.baselineGcSweepWorld(world);
                     });
                 } else if (players && npcs) {
-                    forEachWorldOnWorldThread(HideEntityUiWorldRefresher::refreshWorld);
+                    forEachWorldOnWorldThread(world -> {
+                        refreshWorld(world);
+                    });
                 } else if (players && gc) {
                     forEachWorldOnWorldThread(world -> {
                         HideEntityUiPlayerRefreshPass.refreshPlayers(world);
@@ -103,9 +105,13 @@ public final class HideEntityUiWorldRefresher {
                         HideEntityUiBaselineGcPass.baselineGcSweepWorld(world);
                     });
                 } else if (players) {
-                    forEachWorldOnWorldThread(HideEntityUiPlayerRefreshPass::refreshPlayers);
+                    forEachWorldOnWorldThread(world -> {
+                        HideEntityUiPlayerRefreshPass.refreshPlayers(world);
+                    });
                 } else if (npcs) {
-                    forEachWorldOnWorldThread(HideEntityUiNpcRefreshPass::refreshNpcs);
+                    forEachWorldOnWorldThread(world -> {
+                        HideEntityUiNpcRefreshPass.refreshNpcs(world);
+                    });
                 } else if (gc) {
                     forEachWorldOnWorldThread(HideEntityUiBaselineGcPass::baselineGcSweepWorld);
                 }

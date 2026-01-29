@@ -45,7 +45,9 @@ final class HideEntityUiNpcRefreshPass {
                         if (archetypeChunk.getComponent(i, UIComponentList.getComponentType()) == null) continue;
 
                         stats[0]++;
-                        if (HideEntityUiApplier.applyForRefAndReport(ref, worldStore, commandBuffer, Boolean.TRUE)) {
+                        // Hot hide: force a component-level recreate so clients update already-spawned NPC UI
+                        // without requiring relog / re-stream.
+                        if (HideEntityUiApplier.applyForRefAndReport(ref, worldStore, commandBuffer, Boolean.TRUE, true)) {
                             stats[1]++;
                         }
                     }
@@ -91,7 +93,7 @@ final class HideEntityUiNpcRefreshPass {
                 final Store<EntityStore> store = ref.getStore();
                 if (store == null) continue;
 
-                if (HideEntityUiApplier.applyForRefAndReport(ref, store, null, Boolean.TRUE)) {
+                if (HideEntityUiApplier.applyForRefAndReport(ref, store, null, Boolean.TRUE, false)) {
                     changed++;
                 }
             }

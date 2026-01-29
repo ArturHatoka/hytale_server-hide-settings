@@ -14,18 +14,17 @@ import javax.annotation.Nullable;
 import java.util.Arrays;
 
 /**
- * Applies the HideEnemyHealth configuration to an entity by rewriting its {@link UIComponentList}.
+ * Applies the Server Hide Settings configuration to an entity by rewriting its {@link UIComponentList}.
  *
  * <p>Implementation rules:
  * <ul>
- *   <li>We take a baseline snapshot the first time we touch an entity, and only ever remove IDs from that baseline.</li>
- *   <li>"Unhide" restores the exact baseline (no extra UI components are introduced).</li>
+ *   <li>We compute from the entity's <b>current</b> {@code componentIds} list and only ever remove IDs.</li>
+ *   <li>Hot "unhide" (re-adding IDs) is intentionally not supported on all client builds without relog/re-stream.</li>
  *   <li>All operations are safe against invalid/stale refs (we check {@link Ref#isValid()}).</li>
  * </ul>
  * </p>
  */
 public final class HideEntityUiApplier {
-
 
     private HideEntityUiApplier() {
     }
@@ -33,8 +32,8 @@ public final class HideEntityUiApplier {
     /**
      * Apply current config to the given entity ref.
      *
-     * <p>This variant is used from ECS callbacks. It performs the mutation (if needed) and ignores
-     * the "changed" signal.</p>
+     * <p>This variant is used from ECS callbacks (spawn/archetype changes). It performs the mutation (if needed)
+     * and does not force a client-side UI rebuild.</p>
      *
      * @param entityRef entity reference (must be valid)
      * @param store     entity store
@@ -45,14 +44,13 @@ public final class HideEntityUiApplier {
                                    @Nonnull final Store<EntityStore> store,
                                    @Nullable final CommandBuffer<EntityStore> buffer,
                                    @Nullable final Boolean forceNpc) {
-        applyForRefAndReport(entityRef, store, buffer, forceNpc);
+        applyForRefAndReport(entityRef, store, buffer, forceNpc, false);
     }
 
     /**
      * Apply current config to the given entity ref and report whether a store update was performed.
      *
-     * <p>This is used by explicit refresh passes so we can optionally log how many entities were
-     * actually changed.</p>
+     * <p>This overload is kept for compatibility with older call sites. It does not force a client-side UI rebuild.</p>
      *
      * @return true if the plugin wrote a new {@link UIComponentList} to the store for this entity
      */
@@ -60,6 +58,23 @@ public final class HideEntityUiApplier {
                                                @Nonnull final Store<EntityStore> store,
                                                @Nullable final CommandBuffer<EntityStore> buffer,
                                                @Nullable final Boolean forceNpc) {
+        return applyForRefAndReport(entityRef, store, buffer, forceNpc, false);
+    }
+
+    /**
+     * Apply current config to the given entity ref and report whether a store update was performed.
+     *
+     * <p>When {@code forceClientRebuild} is true and a {@link CommandBuffer} is available, we attempt to
+     * force a client-side UI rebuild by removing and re-adding the {@link UIComponentList} component.
+     * This is used by explicit refresh passes to update already-spawned entities without requiring client relog.</p>
+     *
+     * @return true if the plugin wrote a new {@link UIComponentList} to the store for this entity
+     */
+    public static boolean applyForRefAndReport(@Nonnull final Ref<EntityStore> entityRef,
+                                               @Nonnull final Store<EntityStore> store,
+                                               @Nullable final CommandBuffer<EntityStore> buffer,
+                                               @Nullable final Boolean forceNpc,
+                                               final boolean forceClientRebuild) {
 
         if (!entityRef.isValid()) return false;
 
@@ -71,13 +86,11 @@ public final class HideEntityUiApplier {
         final int[] currentIds = UiComponentFieldAccessor.getComponentIds(list);
         if (currentIds == null) return false;
 
-        final long key = EntityUiBaselineCache.entityKey(entityRef);
-
-        // If disabled globally -> restore baseline (if any) and drop cached baseline to avoid growth.
+        // If disabled globally, do nothing.
+        // We intentionally do not attempt to "unhide" for already-spawned entities.
+        // Some client builds do not recreate overhead UI mid-session without re-stream/relog.
         if (!cfg.enabled) {
-            return UiComponentListBaselineSupport.restoreBaselineIfPresent(
-                    key, currentIds, entityRef, store, buffer, list
-            );
+            return false;
         }
 
         final boolean isPlayer;
@@ -96,10 +109,6 @@ public final class HideEntityUiApplier {
             return false;
         }
 
-        final byte kind = isPlayer
-                ? EntityUiBaselineCache.KIND_PLAYER
-                : (isNpc ? EntityUiBaselineCache.KIND_NPC : EntityUiBaselineCache.KIND_UNKNOWN);
-
         final HideEnemyHealthConfig.TargetSettings settings =
                 isPlayer ? cfg.getPlayers() : (isNpc ? cfg.getNpcs() : null);
 
@@ -107,44 +116,34 @@ public final class HideEntityUiApplier {
 
         final boolean hideNone = !settings.hideDamageNumbers && !settings.hideHealthBar;
 
-        // If nothing should be hidden, we only restore if we have a baseline and the entity was modified before.
-        // This avoids creating baseline entries for entities when the feature is effectively off for them.
+        // If nothing should be hidden for this target, do nothing.
+        // We intentionally avoid trying to re-add UI components mid-session (see comment above).
         if (hideNone) {
-            return UiComponentListBaselineSupport.restoreBaselineIfPresent(
-                    key, currentIds, entityRef, store, buffer, list
-            );
+            return false;
         }
-
-        // Baseline must reflect the entity's original UI list (before we modify it).
-        // We cache it only if we actually need to hide something for this entity.
-        final int[] existingBaseline = EntityUiBaselineCache.getBaseline(key);
-        final boolean baselineWasMissing = (existingBaseline == null);
-        final int[] baseline = (existingBaseline != null)
-                ? existingBaseline
-                : EntityUiBaselineCache.putBaselineIfAbsent(
-                        key,
-                        UiComponentListFilterSupport.buildBaselineFromCurrent(currentIds),
-                        kind
-                );
 
         if (!UiComponentCache.ensureCache()) return false;
 
-        final int[] desired = UiComponentListFilterSupport.computeDesiredIds(baseline, settings);
+        // Compute from the CURRENT list so HP/Damage toggles stay independent even if UI IDs
+        // appear later during the entity lifetime (e.g., combat text).
+        final int[] desired = UiComponentListFilterSupport.computeDesiredIds(currentIds, settings);
         if (Arrays.equals(currentIds, desired)) {
-            // If we created a baseline but ended up not changing anything, drop it to prevent cache growth.
-            if (baselineWasMissing) {
-                EntityUiBaselineCache.remove(key);
-            }
             return false;
         }
 
         try {
             final UIComponentList writable = UiComponentListWriterSupport.prepareUiListForWrite(list, buffer);
             UiComponentFieldAccessor.setComponentIds(writable, desired);
-            UiComponentListWriterSupport.putComponent(entityRef, store, buffer, writable);
+
+            // Force a client rebuild only for explicit refresh passes and only when we removed something.
+            // We do not support hot "unhide".
+            final boolean removedSomething = desired.length < currentIds.length;
+            final boolean rebuild = forceClientRebuild && buffer != null && removedSomething;
+
+            UiComponentListWriterSupport.putComponent(entityRef, store, buffer, writable, rebuild);
             return true;
         } catch (Throwable t) {
-            // Failed to write (store may be in a transient state). Keep baseline.
+            // Failed to write (store may be in a transient state). Skip this entity.
             return false;
         }
     }
